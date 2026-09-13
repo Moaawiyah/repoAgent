@@ -28,9 +28,7 @@ def test_help_version_no_side_effects(cli, tmp_path, args):
     assert not (tmp_path / "data").exists()
 
 
-@pytest.mark.parametrize(
-    "command", ["index", "analyze", "ask", "fix", "test", "benchmark"]
-)
+@pytest.mark.parametrize("command", ["ask", "fix", "test", "benchmark"])
 def test_workflow_is_blocked_and_inert(cli, tmp_path, monkeypatch, command):
     target = tmp_path / "target"
     target.mkdir()

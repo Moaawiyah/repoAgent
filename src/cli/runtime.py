@@ -9,10 +9,15 @@ import typer
 from pydantic import ValidationError
 
 from repoagent import RepoAgent
+from repoagent.analysis.render import render_analysis
+from repoagent.analysis.results import RepositoryAnalysis
+from repoagent.cli.render import render_evaluation, render_index, render_search
 from repoagent.config import Settings
 from repoagent.domain.errors import RepoAgentError
 from repoagent.domain.tasks import TaskEvent, TaskRecord
+from repoagent.evaluation.models import EvaluationReport
 from repoagent.logging import configure_logging
+from repoagent.retrieval.models import IndexSummary, SearchResponse
 
 
 @contextmanager
@@ -48,16 +53,33 @@ def client(ctx: typer.Context) -> RepoAgent:
     return RepoAgent(settings=settings)
 
 
-def output(value: TaskRecord | list[TaskEvent], as_json: bool) -> None:
+def output(
+    value: TaskRecord
+    | list[TaskEvent]
+    | RepositoryAnalysis
+    | IndexSummary
+    | SearchResponse
+    | EvaluationReport,
+    as_json: bool,
+) -> None:
     if as_json:
         data = (
-            value.model_dump(mode="json")
-            if isinstance(value, TaskRecord)
-            else [event.model_dump(mode="json") for event in value]
+            [event.model_dump(mode="json") for event in value]
+            if isinstance(value, list)
+            else value.model_dump(mode="json")
         )
         typer.echo(json.dumps(data))
-    elif isinstance(value, TaskRecord):
+        return
+    if isinstance(value, TaskRecord):
         typer.echo(f"Task {value.id}: {value.status}\n{value.message or ''}")
+    elif isinstance(value, RepositoryAnalysis):
+        typer.echo(render_analysis(value))
+    elif isinstance(value, IndexSummary):
+        typer.echo(render_index(value))
+    elif isinstance(value, SearchResponse):
+        typer.echo(render_search(value))
+    elif isinstance(value, EvaluationReport):
+        typer.echo(render_evaluation(value))
     else:
         for event in value:
             typer.echo(

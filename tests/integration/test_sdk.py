@@ -25,7 +25,7 @@ def test_client_is_lazy_and_does_not_configure_logging(tmp_path):
     assert logger.handlers == handlers
 
 
-@pytest.mark.parametrize("method", ["index", "analyze", "ask", "fix", "test"])
+@pytest.mark.parametrize("method", ["ask", "fix", "test"])
 def test_repository_methods_preserve_typed_inputs(tmp_path, method):
     client = RepoAgent(settings=Settings(data_dir=tmp_path / "data"))
     source = tmp_path / "target"

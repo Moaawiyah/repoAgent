@@ -8,10 +8,12 @@ import typer
 
 from repoagent import __version__
 from repoagent.cli.commands import Json, register
+from repoagent.cli.retrieval_cli import register_retrieval
 from repoagent.cli.runtime import client, errors, output
 
 app = typer.Typer(
-    no_args_is_help=True, help="RepoAgent — M1 repository engineering foundation."
+    no_args_is_help=True,
+    help="RepoAgent — repository analysis, retrieval, and engineering platform.",
 )
 tasks = typer.Typer(no_args_is_help=True, help="Inspect persisted task records.")
 app.add_typer(tasks, name="tasks")
@@ -52,3 +54,4 @@ def events(ctx: typer.Context, task_id: UUID, json: Json = False) -> None:
 
 
 register(app)
+register_retrieval(app)

@@ -1,5 +1,92 @@
 # Architecture
 
+## M3 retrieval pipeline
+
+`repoagent index` and `repoagent search` run a separated retrieval pipeline:
+
+```mermaid
+flowchart TD
+  Spec[RepositorySpec] --> Analyzer[RepositoryAnalyzer M2]
+  Analyzer --> Chunker[CodeChunker]
+  Chunker --> Chunks[CodeChunk stable IDs]
+  Chunks --> Embed[EmbeddingProvider once per chunk]
+  Chunks --> Lexical[BM25Retriever]
+  Embed --> Snap[IndexSnapshot via IndexStore]
+  Snap --> Search[SearchService]
+  Lexical --> Hybrid[HybridRetriever RRF]
+  VectorR[VectorRetriever + VectorStore] --> Hybrid
+  Hybrid --> Rerank[Reranker optional]
+  Search --> Results[SearchResponse provenance]
+  Search --> Eval[RetrievalEvaluator Recall@K MRR]
+```
+
+- `CodeChunker` turns M2 symbols into chunks aligned with functions, methods,
+  and module-level code. Class chunks keep the class preamble (header,
+  docstring, attributes) without duplicating nested symbol bodies, so source
+  is never stored twice. Chunk identity is a SHA-256 of repository, file,
+  qualified symbol, and source hash — deterministic and cache-friendly.
+- `BM25Retriever` implements Okapi BM25 over `search_text` (path, qualified
+  name, docstring, source) with identifier-aware tokenization: snake_case and
+  CamelCase split into subtokens while the whole identifier is preserved.
+- `EmbeddingProvider` is a vendor-independent protocol; the configured
+  default is `HashingEmbeddingProvider` (hashed tokens + character trigrams,
+  deterministic and offline). `VectorStore` is a protocol implemented by the
+  in-memory `LocalVectorStore` (cosine, deterministic tie-breaks); a pgvector
+  or Qdrant adapter can replace it without touching retrieval code.
+- `HybridRetriever` fuses rankings with Reciprocal Rank Fusion
+  (`1/(k + rank)` per retriever), never mixing raw score scales; ties break
+  by chunk ID. `KeywordOverlapReranker` optionally reorders candidates.
+- `IndexService` embeds every chunk exactly once per indexing run and
+  persists an `IndexSnapshot` (chunks + vectors + provider identity) through
+  the `IndexStore` port (`JsonIndexStore` adapter, atomic writes). Searches
+  load the snapshot, rebuild the in-memory retrievers, and embed only the
+  query. Provider/dimension mismatch fails loudly; no silent strategy
+  fallback.
+- `RetrievalEvaluator` runs real searches per strategy over labeled
+  `RetrievalCase` data and computes Recall@K, MRR, HitRate@K, and
+  Precision@K — no LLM involved, no hardcoded numbers. Logs use structured
+  events only; no repository content or queries are logged.
+
+## M2 analysis pipeline
+
+`repoagent analyze <path>` runs a separated pipeline, each stage independently
+testable and replaceable:
+
+```mermaid
+flowchart LR
+  Spec[RepositorySpec] --> Source[RepositorySource / LocalRepositorySource]
+  Source --> Discovery[FileDiscovery + GitIgnore]
+  Discovery --> Parser[PythonAnalyzer + ModuleVisitor]
+  Parser --> Classifier[ImportClassifier]
+  Parser --> Relations[RelationshipBuilder]
+  Classifier --> Analyzer[RepositoryAnalyzer]
+  Relations --> Analyzer
+  Analyzer --> Result[RepositoryAnalysis]
+```
+
+- `RepositorySource` materializes a validated `RepositorySpec` into a local
+  tree; a future Git source can implement the same protocol without touching
+  the analyzer. Unreadable directories raise `RepositoryInvalid`.
+- `FileDiscovery` walks deterministically, skips ignored directories
+  (`.git`, `.venv`, `node_modules`, `dist`, `build`, caches), honors
+  `.gitignore` per directory (comments, negation, dir-only, anchored,
+  `*`/`?`/`**` patterns), and never follows symlinks outside the root.
+- `PythonAnalyzer` parses each file once with the standard `ast` module;
+  `ModuleVisitor` emits typed `CodeSymbol` values (module/class/function/
+  method, parameters, annotations, decorators, docstrings, line ranges).
+  Target code is never imported or executed. Syntax, encoding, size, and
+  read failures become per-file `FileError` records.
+- `ImportClassifier` conservatively labels imports internal, stdlib
+  (`sys.stdlib_module_names`), external, or unknown (relative imports that
+  cannot be confirmed).
+- `RelationshipBuilder` emits only statically verifiable `Relationship`
+  edges: imports, inherits (resolved when unambiguous), contains, defines.
+- `RepositoryAnalyzer` composes the stages and returns a frozen
+  `RepositoryAnalysis` with computed counts, symbols, imports, errors,
+  detected tests, configuration files, and relationships. `render.py`
+  holds presentation text for the CLI; analysis never depends on CLI code.
+  Results contain no timestamps and are deterministic across runs.
+
 ## M1 implemented boundary
 
 RepoAgent is a standalone Python application. Targets are inputs, never part of
@@ -155,8 +242,9 @@ foundation; revisit orchestration tooling only when a demonstrated need arises.
 ## Source layout and packaging
 
 Implementation directories (`sdk`, `application`, `domain`, `ports`, `adapters`,
-and `cli`) live directly under `src/`. Setuptools maps the installed `repoagent`
-package to that source directory through `package-dir` in `pyproject.toml`,
-including editable installs. Public imports and the console entry point remain
-`repoagent`. Add new subpackages to the explicit package list when creating them.
-The package includes `py.typed`; `build/` and distribution output are ignored.
+`analysis`, and `cli`) live directly under `src/`. Setuptools maps the installed
+`repoagent` package to that source directory through `package-dir` in
+`pyproject.toml`, including editable installs. Public imports and the console
+entry point remain `repoagent`. Add new subpackages to the explicit package list
+when creating them. The package includes `py.typed`; `build/` and distribution
+output are ignored.

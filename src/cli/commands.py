@@ -33,18 +33,12 @@ def submit(
 
 def register(app: typer.Typer) -> None:
     @app.command()
-    def index(
-        ctx: typer.Context, source: str, commit: Commit = None, json: Json = False
-    ) -> None:
-        """Index a repository (unavailable until M3)."""
-        submit(ctx, TaskKind.INDEX, source, None, commit, json)
-
-    @app.command()
     def analyze(
         ctx: typer.Context, source: str, commit: Commit = None, json: Json = False
     ) -> None:
-        """Analyze repository structure (unavailable until M2)."""
-        submit(ctx, TaskKind.ANALYZE, source, None, commit, json)
+        """Analyze a local Python repository into typed structure."""
+        with errors():
+            output(client(ctx).analyze(source, commit=commit), json)
 
     @app.command()
     def ask(

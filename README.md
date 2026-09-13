@@ -1,8 +1,9 @@
 # RepoAgent
 
-An independent repository engineering platform. **M1 foundation is implemented.**
-Repository ingestion, retrieval, model calls, patch generation, sandbox execution,
-and benchmarks are planned capabilities, not working features in this release.
+An independent repository engineering platform. **M1 foundation, M2 repository
+analysis, and M3 hybrid code retrieval are implemented.** Model calls, agents,
+patch generation, sandbox execution, and benchmarks are planned capabilities,
+not working features in this release.
 
 ## Setup
 
@@ -16,70 +17,123 @@ uv run repoagent --version
 
 Runtime and tests need no API keys, Docker daemon, or network after installation.
 
-## Current behavior
+## Analyzing repositories (M2)
 
 ```sh
-uv run repoagent --data-dir .repoagent analyze https://github.com/Moaawiyah/repoAgent.git --json
-uv run repoagent --data-dir .repoagent fix ./some-repository 'Login returns 500' --json
-uv run repoagent --data-dir .repoagent benchmark synthetic --json
-uv run repoagent --data-dir .repoagent tasks show TASK_ID --json
-uv run repoagent --data-dir .repoagent tasks events TASK_ID --json
+uv run repoagent analyze ./some-python-project
+uv run repoagent analyze ./some-python-project --json
 ```
 
-`index`, `analyze`, `ask`, `fix`, `test`, and `benchmark` validate input and record a
-**blocked** task with a `capability_unavailable` event. They exit with code **3**.
-This is expected M1 behavior, not evidence of an analysis or attempted repair.
-Task inspection works across CLI invocations. JSON is written to stdout; logs
-and errors go to stderr. Global options precede the command.
+`analyze` accepts a local directory, validates it (existing, a directory,
+readable), and performs static analysis only — target code is never imported
+or executed. Extracted information:
 
-Exit codes: 0 success; 1 operational failure; 2 invalid input; 3 unavailable capability.
-Accepted benchmark names: `synthetic`, `bugsinpy`, `swe-bench`, `swe-bench-verified`.
-Local input must be an existing directory. Public GitHub URL syntax is validated;
-remote existence and visibility are not checked until ingestion. Issue arguments
-are inert natural-language text in M1; GitHub issue fetching is not implemented.
+- Python modules with docstrings and line ranges.
+- Classes with base classes, decorators, docstrings, and line ranges.
+- Functions, methods, and async functions with typed parameters
+  (name, annotation, default, kind), return annotations, docstrings, and
+  line ranges.
+- Imports classified conservatively as repository-internal, standard
+  library, or external.
+- Relationships: imports, inheritance, containment, definitions.
+- Repository summary: file/module/class/function/method counts, detected
+  tests and configuration files, and per-file analysis errors.
+
+Discovery skips vendored/ignored directories, honors `.gitignore`, and never
+follows symlinks outside the repository. One malformed file is recorded as a
+per-file error and does not abort the analysis. Results are deterministic.
+
+## Indexing and searching (M3)
+
+```sh
+uv run repoagent index ./some-python-project
+uv run repoagent search ./some-python-project "Where is authentication handled?"
+uv run repoagent search ./some-python-project "authentication" --strategy bm25 --top-k 5
+uv run repoagent search ./some-python-project "authentication" --strategy vector
+uv run repoagent search ./some-python-project "authentication" --strategy hybrid --rerank
+uv run repoagent search ./some-python-project "authentication" --json
+```
+
+`index` analyzes a repository (reusing M2), splits it into structure-aware
+chunks aligned with functions, methods, classes, and module-level code, embeds
+each chunk once, and persists the index under the data directory. Chunk IDs
+are deterministic (`repository + file + qualified symbol + source hash`), so
+unchanged code keeps its identity.
+
+`search` retrieves the most relevant code with full provenance (file, symbol,
+line range, source preview) rather than dumping whole files. Strategies:
+`bm25` (Okapi BM25 with identifier-aware tokenization that splits
+snake_case/CamelCase while preserving exact identifiers), `vector` (embedding
+similarity), and `hybrid` (default; Reciprocal Rank Fusion of both, never
+mixing raw score scales). `--rerank` optionally applies a deterministic
+keyword-overlap reranker. JSON output is machine-readable; logs never mix
+into it.
+
+## Retrieval evaluation (LLM-free)
+
+```sh
+uv run repoagent evaluate ./some-python-project \
+  --cases cases.json --top-k 5
+uv run repoagent evaluate ./some-python-project \
+  --cases cases.json --strategy bm25 --json
+```
+
+`evaluate` runs real searches per strategy against labeled cases (query +
+expected files/symbols) and reports Recall@K, MRR, HitRate@K, and Precision@K
+computed from actual retrieval results — nothing is hardcoded. See
+`tests/fixtures/rag_cases.json` for the case format. This is how retrieval
+quality is measured independently of any language model, and how future
+strategies (graph expansion, rerankers) will be compared.
+
+## Unavailable workflows (task records)
+
+```sh
+uv run repoagent --data-dir .repoagent ask ./repo 'How is auth done?' --json
+uv run repoagent --data-dir .repoagent fix ./repo 'Login returns 500' --json
+uv run repoagent --data-dir .repoagent benchmark synthetic --json
+uv run repoagent --data-dir .repoagent tasks show TASK_ID --json
+```
+
+`ask`, `fix`, `test`, and `benchmark` validate input and record a **blocked**
+task with a `capability_unavailable` event, exiting with code **3**. This is
+expected behavior, not evidence of an attempted operation. Exit codes: 0
+success; 1 operational failure; 2 invalid input; 3 unavailable capability.
 
 ## Python SDK
 
-The same application is available as an object-oriented, in-process SDK:
-
 ```python
 from pathlib import Path
-from repoagent import RepoAgent, Settings, TaskStatus
+from repoagent import RepoAgent, Settings
 
 client = RepoAgent(settings=Settings(data_dir=Path(".repoagent")))
-task = client.analyze("https://github.com/Moaawiyah/repoAgent.git", commit="main")
-assert task.status is TaskStatus.BLOCKED  # M1 does not analyze repositories yet
-print(task.message)
-print(client.get_task(task.id))
-print(client.task_events(task.id))
+summary = client.index("./some-python-project")
+print(summary.chunk_count, summary.embedding_provider)
+
+response = client.search("./some-python-project", "verify password", top_k=3)
+for hit in response.results:
+    print(hit.rank, hit.chunk.file_path, hit.chunk.qualified_name, hit.score)
+
+analysis = client.analyze("./some-python-project")
+print(analysis.class_count, analysis.method_count)
 ```
 
-Methods: `index`, `analyze`, `ask`, `fix`, `test`, `benchmark`, `submit`,
-`get_task`, and `task_events`. All return typed Pydantic records, with UUIDs,
-enums and timestamps intact. Use `model_dump(mode="json")` for JSON-ready data.
-
-Construction is lazy; storage is opened on the first valid operation. The SDK
-does not print, terminate the process, or install logging handlers. SQLite owns
-connections per operation, so the client does not need a `close()` call. The CLI
-uses this SDK and provides its own formatting, logging and exit codes.
-
-For custom storage, pass `RepoAgent(store=your_task_store)` using the exported
-`TaskStore` protocol. This bypasses default SQLite and environment configuration.
-No subclass of `RepoAgent` is required. See [SDK contracts](docs/sdk.md) for input,
-error and extension behavior.
+`index`, `search`, `analyze`, and `evaluate` return typed Pydantic models.
+`ask`, `fix`, `test`, `benchmark`, `submit`, `get_task`, and `task_events`
+remain available; unavailable workflows return blocked task records. The SDK
+never prints, terminates the process, or installs logging handlers. Storage
+and embedding providers are injectable (`index_store=`, `embedding_provider=`)
+behind the `IndexStore` and `EmbeddingProvider` protocols.
 
 ## Configuration and data
 
-Settings use the `REPOAGENT_` prefix; see `.env.example`. Data defaults to
-`~/.repoagent/tasks.sqlite3`. `--data-dir` overrides the environment. Dotenv files
-are read only with an explicit `--env-file PATH`; process environment values take
-precedence over dotenv values. Retry count, context budget, and execution timeout
-are validated future policy settings and **inactive in M1**.
-
-Task records persist the supplied repository and question/issue locally. Logs
-contain allowlisted metadata only, not issue text or repository content. Treat the
-application data directory as private; it is not encrypted. Do not supply secrets
-as issue text. Help and version do not create storage or access target repositories.
+Settings use the `REPOAGENT_` prefix; see `.env.example`. Task data defaults
+to `~/.repoagent/tasks.sqlite3`; retrieval indexes are stored under
+`<data-dir>/indexes/`. Embedding configuration: `REPOAGENT_EMBEDDING_PROVIDER`
+(`hashing` deterministic local provider) and `REPOAGENT_EMBEDDING_DIMENSION`.
+An index records its provider and dimension; searching with a mismatched
+provider fails with a clear error instead of silently degrading. Logs contain
+allowlisted metadata only. Target code is never imported or executed by
+analysis, indexing, or search.
 
 ## Validation
 
@@ -91,20 +145,16 @@ uv run python scripts/check_quality.py
 uv build
 ```
 
-Pytest produces fresh statement coverage for the package and quality helper. The
-quality helper checks complete production-file coverage data, requires coverage
-strictly above 85%, and enforces at most 150 physical lines per Python file,
-including tests. CI repeats validation and a wheel smoke test on Python 3.12/3.13.
+The quality helper requires fresh statement coverage strictly above 85% and
+at most 150 physical lines per Python file. CI repeats validation and a wheel
+smoke test on Python 3.12/3.13.
 
 ## Architecture and next step
 
-Source modules live directly in `src/` (for example, `src/sdk/` and
-`src/domain/`). Packaging maps that directory to the public `repoagent` name,
-so SDK imports and CLI commands remain unchanged.
+Source modules live directly in `src/` (`sdk/`, `domain/`, `application/`,
+`adapters/`, `analysis/` (M2), `retrieval/` and `evaluation/` (M3), `cli/`).
+See [architecture](docs/architecture.md) for boundaries and the pipelines;
+see [milestones](docs/milestones.md) for the roadmap.
 
-See [architecture](docs/architecture.md) for boundaries, storage contracts, legacy
-reuse decisions and safety constraints; see [milestones](docs/milestones.md) for
-the complete roadmap and milestone acceptance criteria.
-
-Next: **M2 — isolated repository snapshots and deterministic Python AST/chunk
-extraction.** The original target repository must never be modified directly.
+Next: **M4 — dependency/import/inheritance graph retrieval** built on M2
+relationships and evaluated with the M3 framework (strategy E).

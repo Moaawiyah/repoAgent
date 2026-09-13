@@ -1,8 +1,9 @@
 # Milestone implementation roadmap
 
-Only M1 is implemented. Complete and validate each milestone before advancing.
-All development gates: passing pytest, Ruff lint/format, >85% statement coverage,
-and <=150 physical lines per Python file. Use meaningful unit/integration tests.
+M1, M2, and M3 are implemented. Complete and validate each milestone before
+advancing. All development gates: passing pytest, Ruff lint/format, >85%
+statement coverage, and <=150 physical lines per Python file. Use meaningful
+unit/integration tests.
 
 | Milestone | Implementation | Acceptance evidence |
 | --- | --- | --- |
@@ -32,14 +33,44 @@ FastAPI adapters will expose `POST /repositories`, `POST /repositories/{id}/inde
 `POST /tasks`, and `GET /tasks/{id}` with `/events`, `/patch`, and `/evaluation`
 subresources. No HTTP server is implemented or required by M1.
 
-## M1 limitations and next step
+## M2 delivered
 
-Current workflow commands stop at capability-unavailable task records. They do not
-verify remote visibility, ingest source, retrieve code, call a model, generate a
-patch, test a target, or calculate benchmark metrics. SQLite is local storage,
-not a distributed job queue. Task creation and blocking are distinct transactions;
-an interrupted submission may remain pending. There is no auto-resume worker.
+M2 is implemented: local `RepositorySource` validation, ignore-aware and
+symlink-safe `FileDiscovery` (honors `.gitignore`), `PythonAnalyzer` using the
+standard `ast` module (modules, classes, functions, methods, async,
+parameters, annotations, decorators, docstrings, line ranges), conservative
+`ImportClassifier` (internal/stdlib/external/unknown), deterministic
+`RelationshipBuilder` (imports, inheritance, containment, definitions), and
+the `RepositoryAnalyzer` orchestration returning a typed `RepositoryAnalysis`.
+The CLI `analyze <path>` command presents a summary or `--json` structure;
+per-file syntax/encoding/size/read errors are recorded without aborting.
+GitHub cloning and commit selection remain deferred to later ingestion work.
 
-M2 begins with repository-independent synthetic Git/local fixtures and an isolated
-snapshot abstraction, then safe file discovery, Python AST extraction and
-structure-aware chunks. Keep all target execution deferred to M7.
+## M3 delivered, limitations, and next step
+
+M3 is implemented: `CodeChunker` produces deterministic structure-aware
+chunks (functions, methods, class preambles without duplicated method bodies,
+and module-level residual code) with stable identities derived from
+repository, file, qualified symbol, and source hash; `BM25Retriever` provides
+lexical search over identifier-aware tokenization (snake_case/CamelCase
+splitting that preserves whole identifiers); `HashingEmbeddingProvider`
+provides deterministic offline embeddings over tokens and character
+trigrams; `LocalVectorStore` provides cosine similarity behind the
+`VectorStore` protocol; `HybridRetriever` fuses lexical and semantic rankings
+with Reciprocal Rank Fusion; an optional deterministic `KeywordOverlapReranker`
+reorders candidates; `IndexService`/`SearchService` orchestrate indexing and
+search behind the SDK facade; `JsonIndexStore` persists snapshots under the
+data directory; and `RetrievalEvaluator` measures Recall@K, MRR, HitRate@K,
+and Precision@K per strategy from real retrieval runs.
+
+Remaining M3 gaps: the local hashing provider captures lexical/sub-word
+similarity, not vendor semantic embeddings (the provider protocol is the
+seam); the vector store is in-memory and rebuilt from the persisted snapshot
+per search; no incremental indexing, caching, BM25 persistence, reranker
+models, query decomposition, or metadata filters yet; evaluation cases are
+supplied as JSON data rather than bundled labeled suites.
+
+Next: **M4 graph** — dependency/import/inheritance/reference graph and
+neighborhood expansion over M2 relationships, evaluated with the M3 framework
+as strategy E against strategies A–D. Keep all target execution deferred to
+M7.

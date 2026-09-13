@@ -1,0 +1,37 @@
+[
+  {
+    "query": "Where are user credentials checked?",
+    "expected_files": ["auth/service.py"],
+    "expected_symbols": ["auth.service.AuthService.verify_password"]
+  },
+  {
+    "query": "how is a session token refreshed for an existing account",
+    "expected_files": ["auth/service.py"],
+    "expected_symbols": ["auth.service.AuthService.refresh_session"]
+  },
+  {
+    "query": "issue and decode bearer tokens",
+    "expected_files": ["auth/tokens.py"],
+    "expected_symbols": []
+  },
+  {
+    "query": "how is the total of an invoice computed including tax",
+    "expected_files": ["billing/invoice.py"],
+    "expected_symbols": ["billing.invoice.calculate_invoice_total"]
+  },
+  {
+    "query": "calculate_invoice_total",
+    "expected_files": ["billing/invoice.py"],
+    "expected_symbols": ["billing.invoice.calculate_invoice_total"]
+  },
+  {
+    "query": "remove stale downloaded artifacts from the cache",
+    "expected_files": ["storage/blob_cache.py"],
+    "expected_symbols": ["storage.blob_cache.BlobCacheStore.evict_expired_entries"]
+  },
+  {
+    "query": "web endpoint that handles sign-in attempts",
+    "expected_files": ["web/routes.py"],
+    "expected_symbols": ["web.routes.login_route"]
+  }
+]

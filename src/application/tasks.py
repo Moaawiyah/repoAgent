@@ -13,7 +13,7 @@ from repoagent.domain.tasks import (
 from repoagent.ports.task_store import TaskStore
 
 CAPABILITIES = {
-    TaskKind.INDEX: "M3 (M2 ingestion, then M3 knowledge indexing)",
+    TaskKind.INDEX: "M10 (task orchestration; indexing exists via repoagent index)",
     TaskKind.ANALYZE: "M2 (repository ingestion and AST analysis)",
     TaskKind.ASK: "M5 (retrieval-grounded investigation)",
     TaskKind.FIX: "M7 (M6 patch generation, then M7 isolated validation)",

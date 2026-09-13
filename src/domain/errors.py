@@ -19,3 +19,19 @@ class UnsupportedSchema(RepoAgentError):
 
 class StorageError(RepoAgentError):
     """Storage or filesystem access failed at the public SDK boundary."""
+
+
+class RepositoryInvalid(RepoAgentError):
+    """The repository exists but cannot be read as a source tree."""
+
+
+class RetrievalError(RepoAgentError):
+    """An indexing or retrieval operation failed."""
+
+
+class IndexNotFound(RetrievalError):
+    """No index exists for the requested repository."""
+
+
+class EmbeddingProviderError(RetrievalError):
+    """Embedding generation or an embedding-provider mismatch occurred."""

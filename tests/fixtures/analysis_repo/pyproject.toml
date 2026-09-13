@@ -1,0 +1,4 @@
+[project]
+name = "analysis-fixture"
+version = "0.1.0"
+description = "Synthetic repository used by RepoAgent M2 tests"
