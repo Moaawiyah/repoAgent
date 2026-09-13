@@ -4,7 +4,7 @@ from typing import Annotated
 
 import typer
 
-from repoagent.cli.runtime import errors, output, service
+from repoagent.cli.runtime import client, errors, output
 from repoagent.domain.repository import RepositorySpec
 from repoagent.domain.tasks import TaskKind, TaskRequest
 
@@ -26,7 +26,7 @@ def submit(
             repository=RepositorySpec(source=source, commit=commit),
             description=description,
         )
-        result = service(ctx).submit(request)
+        result = client(ctx).submit(request)
         output(result, as_json)
     raise typer.Exit(3)
 
@@ -80,5 +80,5 @@ def register(app: typer.Typer) -> None:
         """Run synthetic, bugsinpy, swe-bench or swe-bench-verified (M9)."""
         with errors():
             request = TaskRequest(kind=TaskKind.BENCHMARK, suite=suite)
-            output(service(ctx).submit(request), json)
+            output(client(ctx).submit(request), json)
         raise typer.Exit(3)

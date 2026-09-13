@@ -3,15 +3,18 @@
 ## M1 implemented boundary
 
 RepoAgent is a standalone Python application. Targets are inputs, never part of
-its installed package. The CLI calls `TaskService`, which depends on the
-`TaskStore` protocol. The composition root constructs `SQLiteTaskStore` lazily.
+its installed package. The CLI calls the public `RepoAgent` SDK facade, which composes `TaskService`.
+The service depends on the `TaskStore` protocol. The SDK composition root
+constructs `SQLiteTaskStore` lazily or accepts an injected store.
 Pydantic models are immutable, reject unexpected fields, and serialize task
 identities and UTC timestamps. No target code is imported or executed.
 
 ```mermaid
 flowchart TD
-  CLI[Typer CLI] --> Service[TaskService]
-  API[Future FastAPI] -.-> Service
+  CLI[Typer CLI] --> SDK[RepoAgent SDK]
+  Python[Python consumers] --> SDK
+  API[Future FastAPI] -.-> SDK
+  SDK --> Service[TaskService]
   Service --> Port[TaskStore protocol]
   SQLite[SQLite adapter] --> Port
   Service --> Domain[RepositorySpec / TaskRequest / TaskRecord / TaskEvent]
@@ -21,6 +24,12 @@ Settings come from explicit constructor values, process environment, an explicit
 selected dotenv file, then defaults. Startup/help do not initialize dependencies.
 Provider/network work will become async; the current local service is synchronous.
 No orchestration framework or large manager class is needed in M1.
+
+OOP represents concrete responsibilities: the SDK exposes the public use cases,
+`TaskService` owns task behavior, `SQLiteTaskStore` owns persistence, and typed
+models carry validated data. Composition and the storage protocol provide
+extensibility without requiring inheritance. Pure validation/formatting utilities
+remain functions. See [SDK contracts](sdk.md).
 
 ### Task storage contract
 
@@ -142,3 +151,12 @@ Discard hardcoded `foo()` seeds, preserved bug snapshots, fallback diagnoses,
 repository-global paths, and host `subprocess` verification. These violate the
 unfamiliar-repository and isolation goals. LangGraph is not required for this
 foundation; revisit orchestration tooling only when a demonstrated need arises.
+
+## Source layout and packaging
+
+Implementation directories (`sdk`, `application`, `domain`, `ports`, `adapters`,
+and `cli`) live directly under `src/`. Setuptools maps the installed `repoagent`
+package to that source directory through `package-dir` in `pyproject.toml`,
+including editable installs. Public imports and the console entry point remain
+`repoagent`. Add new subpackages to the explicit package list when creating them.
+The package includes `py.typed`; `build/` and distribution output are ignored.

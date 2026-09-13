@@ -15,3 +15,7 @@ class InvalidTransition(RepoAgentError):
 
 class UnsupportedSchema(RepoAgentError):
     """The database requires a different application schema."""
+
+
+class StorageError(RepoAgentError):
+    """Storage or filesystem access failed at the public SDK boundary."""

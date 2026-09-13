@@ -1,7 +1,6 @@
 """Lazy dependency wiring and safe CLI error presentation."""
 
 import json
-import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -9,8 +8,7 @@ from pathlib import Path
 import typer
 from pydantic import ValidationError
 
-from repoagent.adapters.sqlite.task_store import SQLiteTaskStore
-from repoagent.application.tasks import TaskService
+from repoagent import RepoAgent
 from repoagent.config import Settings
 from repoagent.domain.errors import RepoAgentError
 from repoagent.domain.tasks import TaskEvent, TaskRecord
@@ -31,12 +29,12 @@ def errors() -> Iterator[None]:
     except RepoAgentError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from None
-    except (OSError, sqlite3.Error):
+    except OSError:
         typer.echo("Storage or filesystem operation failed", err=True)
         raise typer.Exit(1) from None
 
 
-def service(ctx: typer.Context) -> TaskService:
+def client(ctx: typer.Context) -> RepoAgent:
     options = ctx.obj or {}
     kwargs = {}
     if options.get("data_dir") is not None:
@@ -47,7 +45,7 @@ def service(ctx: typer.Context) -> TaskService:
         raise typer.Exit(2)
     settings = Settings(_env_file=env_file, **kwargs)
     configure_logging(settings.log_level)
-    return TaskService(SQLiteTaskStore(settings.data_dir / "tasks.sqlite3"))
+    return RepoAgent(settings=settings)
 
 
 def output(value: TaskRecord | list[TaskEvent], as_json: bool) -> None:

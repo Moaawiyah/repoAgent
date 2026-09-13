@@ -38,6 +38,36 @@ Local input must be an existing directory. Public GitHub URL syntax is validated
 remote existence and visibility are not checked until ingestion. Issue arguments
 are inert natural-language text in M1; GitHub issue fetching is not implemented.
 
+## Python SDK
+
+The same application is available as an object-oriented, in-process SDK:
+
+```python
+from pathlib import Path
+from repoagent import RepoAgent, Settings, TaskStatus
+
+client = RepoAgent(settings=Settings(data_dir=Path(".repoagent")))
+task = client.analyze("https://github.com/Moaawiyah/repoAgent.git", commit="main")
+assert task.status is TaskStatus.BLOCKED  # M1 does not analyze repositories yet
+print(task.message)
+print(client.get_task(task.id))
+print(client.task_events(task.id))
+```
+
+Methods: `index`, `analyze`, `ask`, `fix`, `test`, `benchmark`, `submit`,
+`get_task`, and `task_events`. All return typed Pydantic records, with UUIDs,
+enums and timestamps intact. Use `model_dump(mode="json")` for JSON-ready data.
+
+Construction is lazy; storage is opened on the first valid operation. The SDK
+does not print, terminate the process, or install logging handlers. SQLite owns
+connections per operation, so the client does not need a `close()` call. The CLI
+uses this SDK and provides its own formatting, logging and exit codes.
+
+For custom storage, pass `RepoAgent(store=your_task_store)` using the exported
+`TaskStore` protocol. This bypasses default SQLite and environment configuration.
+No subclass of `RepoAgent` is required. See [SDK contracts](docs/sdk.md) for input,
+error and extension behavior.
+
 ## Configuration and data
 
 Settings use the `REPOAGENT_` prefix; see `.env.example`. Data defaults to
@@ -67,6 +97,10 @@ strictly above 85%, and enforces at most 150 physical lines per Python file,
 including tests. CI repeats validation and a wheel smoke test on Python 3.12/3.13.
 
 ## Architecture and next step
+
+Source modules live directly in `src/` (for example, `src/sdk/` and
+`src/domain/`). Packaging maps that directory to the public `repoagent` name,
+so SDK imports and CLI commands remain unchanged.
 
 See [architecture](docs/architecture.md) for boundaries, storage contracts, legacy
 reuse decisions and safety constraints; see [milestones](docs/milestones.md) for
