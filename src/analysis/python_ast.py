@@ -39,6 +39,7 @@ class PythonAnalyzer:
             line_count=len(source.splitlines()),
             symbols=visitor.symbols,
             imports=visitor.imports,
+            calls=visitor.calls,
         )
 
     @staticmethod

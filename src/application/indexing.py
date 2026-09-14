@@ -6,15 +6,15 @@ from pathlib import Path
 from repoagent.analysis.analyzer import RepositoryAnalyzer
 from repoagent.domain.errors import EmbeddingProviderError
 from repoagent.domain.repository import RepositorySpec
+from repoagent.graph.builder import RepositoryGraphBuilder
 from repoagent.ports.index_store import IndexStore
 from repoagent.retrieval.chunking import CodeChunker
 from repoagent.retrieval.embeddings import EmbeddingProvider
 from repoagent.retrieval.models import (
     CodeChunk,
-    IndexSnapshot,
-    IndexSummary,
     repository_identifier,
 )
+from repoagent.retrieval.persistence import IndexSnapshot, IndexSummary
 
 
 class IndexService:
@@ -38,6 +38,7 @@ class IndexService:
         analysis = self._analyzer.analyze(spec)
         repo_id = repository_identifier(analysis.repository_root)
         chunks = CodeChunker(repo_id).chunk(analysis, Path(analysis.repository_root))
+        graph = RepositoryGraphBuilder(chunks).build(analysis).to_snapshot()
         logging.getLogger(__name__).info(
             "Chunks generated", extra={"event": "chunks_generated"}
         )
@@ -48,6 +49,7 @@ class IndexService:
             embedding_dimension=self._provider.dimension,
             chunks=chunks,
             vectors=self._embed(chunks),
+            graph=graph,
         )
         self._store.save(snapshot)
         logging.getLogger(__name__).info(
@@ -61,6 +63,8 @@ class IndexService:
             chunk_count=len(chunks),
             embedding_provider=self._provider.name,
             embedding_dimension=self._provider.dimension,
+            node_count=len(graph.nodes),
+            edge_count=len(graph.edges),
         )
 
     def _embed(self, chunks: list[CodeChunk]) -> dict[str, list[float]]:

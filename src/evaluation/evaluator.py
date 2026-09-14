@@ -16,6 +16,7 @@ DEFAULT_STRATEGIES = (
     RetrievalStrategy.BM25,
     RetrievalStrategy.VECTOR,
     RetrievalStrategy.HYBRID,
+    RetrievalStrategy.HYBRID_GRAPH,
 )
 
 

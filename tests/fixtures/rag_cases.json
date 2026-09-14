@@ -33,5 +33,10 @@
     "query": "web endpoint that handles sign-in attempts",
     "expected_files": ["web/routes.py"],
     "expected_symbols": ["web.routes.login_route"]
+  },
+  {
+    "query": "where does login eventually verify the password",
+    "expected_files": ["auth/service.py"],
+    "expected_symbols": ["auth.service.AuthService.verify_password"]
   }
 ]

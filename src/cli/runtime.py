@@ -11,13 +11,23 @@ from pydantic import ValidationError
 from repoagent import RepoAgent
 from repoagent.analysis.render import render_analysis
 from repoagent.analysis.results import RepositoryAnalysis
-from repoagent.cli.render import render_evaluation, render_index, render_search
+from repoagent.cli.render import (
+    render_evaluation,
+    render_export,
+    render_graph_inspection,
+    render_graph_summary,
+    render_index,
+    render_search,
+)
 from repoagent.config import Settings
 from repoagent.domain.errors import RepoAgentError
 from repoagent.domain.tasks import TaskEvent, TaskRecord
 from repoagent.evaluation.models import EvaluationReport
+from repoagent.export.obsidian import ExportSummary
+from repoagent.graph.models import GraphInspection, GraphSummary
 from repoagent.logging import configure_logging
-from repoagent.retrieval.models import IndexSummary, SearchResponse
+from repoagent.retrieval.models import SearchResponse
+from repoagent.retrieval.persistence import IndexSummary
 
 
 @contextmanager
@@ -59,7 +69,10 @@ def output(
     | RepositoryAnalysis
     | IndexSummary
     | SearchResponse
-    | EvaluationReport,
+    | EvaluationReport
+    | GraphSummary
+    | GraphInspection
+    | ExportSummary,
     as_json: bool,
 ) -> None:
     if as_json:
@@ -70,18 +83,19 @@ def output(
         )
         typer.echo(json.dumps(data))
         return
-    if isinstance(value, TaskRecord):
-        typer.echo(f"Task {value.id}: {value.status}\n{value.message or ''}")
-    elif isinstance(value, RepositoryAnalysis):
-        typer.echo(render_analysis(value))
-    elif isinstance(value, IndexSummary):
-        typer.echo(render_index(value))
-    elif isinstance(value, SearchResponse):
-        typer.echo(render_search(value))
-    elif isinstance(value, EvaluationReport):
-        typer.echo(render_evaluation(value))
-    else:
-        for event in value:
-            typer.echo(
-                f"{event.sequence}: {event.name} ({event.status}) {event.message}"
-            )
+    renderers = (
+        (TaskRecord, lambda v: f"Task {v.id}: {v.status}\n{v.message or ''}"),
+        (RepositoryAnalysis, render_analysis),
+        (IndexSummary, render_index),
+        (SearchResponse, render_search),
+        (EvaluationReport, render_evaluation),
+        (GraphSummary, render_graph_summary),
+        (GraphInspection, render_graph_inspection),
+        (ExportSummary, render_export),
+    )
+    for value_type, renderer in renderers:
+        if isinstance(value, value_type):
+            typer.echo(renderer(value))
+            return
+    for event in value:
+        typer.echo(f"{event.sequence}: {event.name} ({event.status}) {event.message}")

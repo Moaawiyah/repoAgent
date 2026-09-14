@@ -88,3 +88,11 @@ class Relationship(AnalysisModel):
     source: str
     target: str
     resolved: bool = False
+
+
+class CallSite(AnalysisModel):
+    """A raw call expression inside a symbol, unresolved at parse time."""
+
+    caller: str
+    expression: str
+    line: int

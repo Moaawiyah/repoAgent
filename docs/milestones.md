@@ -1,6 +1,6 @@
 # Milestone implementation roadmap
 
-M1, M2, and M3 are implemented. Complete and validate each milestone before
+M1–M4 are implemented. Complete and validate each milestone before
 advancing. All development gates: passing pytest, Ruff lint/format, >85%
 statement coverage, and <=150 physical lines per Python file. Use meaningful
 unit/integration tests.
@@ -70,7 +70,32 @@ per search; no incremental indexing, caching, BM25 persistence, reranker
 models, query decomposition, or metadata filters yet; evaluation cases are
 supplied as JSON data rather than bundled labeled suites.
 
-Next: **M4 graph** — dependency/import/inheritance/reference graph and
-neighborhood expansion over M2 relationships, evaluated with the M3 framework
-as strategy E against strategies A–D. Keep all target execution deferred to
-M7.
+## M4 delivered, limitations, and next step
+
+M4 is implemented: `RepositoryGraphBuilder` turns M2 analysis plus chunks
+into a typed code knowledge graph (`GraphNode`/`GraphEdge`, deterministic
+qualified-name identities, DEFINES/CONTAINS/IMPORTS/INHERITS/CALLS edges);
+`CallResolver` extracts a conservative call graph with explicit
+resolved/partial/unresolved certainty (self-calls, same-module and unique
+bare names, unique qualified suffixes; ambiguous attribute calls stay
+partial); `InMemoryGraphStore` provides indexed lookups behind the
+`GraphStore` protocol; `traverse` performs bounded, cycle-safe BFS with
+distance and relationship paths; `GraphExpander` scores candidates by seed
+rank × distance decay × relationship weight; `HybridGraphRetriever` fuses
+hybrid seeds with graph expansion through the shared RRF implementation
+(`hybrid_graph` strategy); graph snapshots persist inside the index; results
+carry structural evidence (lexical/vector ranks, graph distance, hop paths);
+`repoagent graph` inspects and serializes the graph; `repoagent
+export-obsidian` renders deterministic Obsidian vaults with safe filenames,
+wikilinks for real relationships only, and injection-safe fences; and the
+evaluation framework compares all four strategies.
+
+Remaining M4 gaps: call resolution is name-based (no type inference), so
+attribute calls remain partial and cannot distinguish same-named methods
+across types; the graph is rebuilt in memory from the snapshot per search;
+no persistent graph database, no cross-repository identity, no reference
+graph (attribute reads) and no Git-history edges yet.
+
+Next: **M5 — investigation** with a budgeted context engine over retrieved
+evidence, a typed investigator, and an OpenAI-compatible provider adapter
+behind a vendor-independent protocol. Keep target execution deferred to M7.

@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from repoagent.retrieval.models import IndexSnapshot
+from repoagent.retrieval.persistence import IndexSnapshot
 
 
 class IndexStore(Protocol):

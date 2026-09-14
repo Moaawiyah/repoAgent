@@ -1,26 +1,30 @@
-"""Retrieval capability of the public SDK facade (M3)."""
+"""Retrieval and graph capabilities of the public SDK facade (M3/M4)."""
 
 from collections.abc import Sequence
 from pathlib import Path
 
 from repoagent.adapters.index_store import JsonIndexStore
+from repoagent.analysis.analyzer import RepositoryAnalyzer
 from repoagent.application.indexing import IndexService
 from repoagent.application.searching import SearchService
 from repoagent.config import Settings
 from repoagent.domain.repository import RepositorySpec
 from repoagent.evaluation.evaluator import RetrievalEvaluator
 from repoagent.evaluation.models import EvaluationReport, RetrievalCase
+from repoagent.export.obsidian import ExportSummary, ObsidianExporter
+from repoagent.graph.builder import RepositoryGraphBuilder
+from repoagent.graph.models import GraphSnapshot
 from repoagent.ports.index_store import IndexStore
 from repoagent.retrieval.embeddings import (
     EmbeddingProvider,
     provider_from_settings,
 )
 from repoagent.retrieval.models import (
-    IndexSummary,
     RetrievalStrategy,
     SearchRequest,
     SearchResponse,
 )
+from repoagent.retrieval.persistence import IndexSummary
 
 
 class RetrievalApi:
@@ -88,3 +92,25 @@ class RetrievalApi:
             k=k,
             strategies=tuple(strategies) if strategies else None,
         )
+
+    def graph(self, source: str | Path, *, commit: str | None = None) -> GraphSnapshot:
+        """Build the repository code knowledge graph (M4)."""
+        analysis = self._analyze(source, commit=commit)
+        return RepositoryGraphBuilder().build(analysis).to_snapshot()
+
+    def export_obsidian(
+        self,
+        source: str | Path,
+        destination: str | Path,
+        *,
+        overwrite: bool = False,
+    ) -> ExportSummary:
+        """Export the repository graph as an Obsidian vault (M4)."""
+        analysis = self._analyze(source)
+        graph = RepositoryGraphBuilder().build(analysis).to_snapshot()
+        exporter = ObsidianExporter(Path(analysis.repository_root))
+        return exporter.export(graph, Path(destination), overwrite=overwrite)
+
+    def _analyze(self, source: str | Path, *, commit: str | None = None):
+        spec = RepositorySpec(source=str(source), commit=commit)
+        return RepositoryAnalyzer().analyze(spec)

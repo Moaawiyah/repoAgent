@@ -1,9 +1,10 @@
 # RepoAgent
 
 An independent repository engineering platform. **M1 foundation, M2 repository
-analysis, and M3 hybrid code retrieval are implemented.** Model calls, agents,
-patch generation, sandbox execution, and benchmarks are planned capabilities,
-not working features in this release.
+analysis, M3 hybrid code retrieval, and M4 the code knowledge graph (with
+Obsidian export) are implemented.** Model calls, agents, patch generation,
+sandbox execution, and benchmarks are planned capabilities, not working
+features in this release.
 
 ## Setup
 
@@ -75,15 +76,56 @@ into it.
 uv run repoagent evaluate ./some-python-project \
   --cases cases.json --top-k 5
 uv run repoagent evaluate ./some-python-project \
-  --cases cases.json --strategy bm25 --json
+  --cases cases.json --strategy hybrid_graph --json
 ```
 
 `evaluate` runs real searches per strategy against labeled cases (query +
 expected files/symbols) and reports Recall@K, MRR, HitRate@K, and Precision@K
-computed from actual retrieval results — nothing is hardcoded. See
-`tests/fixtures/rag_cases.json` for the case format. This is how retrieval
-quality is measured independently of any language model, and how future
-strategies (graph expansion, rerankers) will be compared.
+computed from actual retrieval results — nothing is hardcoded. Strategies
+compared: `bm25`, `vector`, `hybrid`, and `hybrid_graph`. See
+`tests/fixtures/rag_cases.json` for the case format.
+
+## Code knowledge graph and Obsidian export (M4)
+
+```sh
+uv run repoagent graph ./some-python-project
+uv run repoagent graph ./some-python-project \
+  --symbol "auth.service.AuthService.authenticate"
+uv run repoagent graph ./some-python-project --json
+uv run repoagent export-obsidian ./some-python-project ./repoagent-vault
+```
+
+The graph is built statically from M2 analysis — target code is never
+executed:
+
+- **Node types:** module, class, function, method. Node identity is the
+  stable qualified name; nodes link to chunk IDs for retrieval.
+- **Edge types:** DEFINES (module→symbol), CONTAINS (class→method),
+  IMPORTS (module→module, internal only), INHERITS (class→base, unresolved
+  bases kept marked rather than invented), CALLS (conservatively resolved).
+- **Call resolution** is explicit about certainty: `self.method()` resolves
+  against the caller's class; bare names resolve via the same module or a
+  unique repo-wide name; dotted calls resolve by unique qualified suffix;
+  anything else stays unresolved or partial (marked `resolved: false`) —
+  never guessed.
+- **Traversal is bounded** (max depth, max nodes, edge-type filters) and
+  cycle-safe, recording graph distance and the full relationship path.
+- `repoagent graph --symbol` shows outgoing/incoming/parent relationships;
+  `--json` emits the deterministic machine-readable graph (nodes, edges,
+  metadata) for future agents and tools.
+
+`hybrid_graph` retrieval uses the hybrid ranking as seeds, expands along the
+graph with bounded traversal, scores candidates by seed rank × distance
+decay × relationship weight, and fuses seed and graph rankings with the same
+RRF implementation — every result carries structural evidence (lexical rank,
+vector rank, graph distance, relationship path).
+
+The Obsidian exporter writes the graph as a deterministic Markdown vault
+(`Repository.md`, plus `Modules/`, `Classes/`, `Functions/`, `Methods/`
+notes with wikilinks for real relationships, inline code for unresolved
+ones, and injection-safe source fences). It never deletes files and requires
+`--overwrite` to export into a non-empty directory. Obsidian itself is never
+required.
 
 ## Unavailable workflows (task records)
 
@@ -107,14 +149,16 @@ from repoagent import RepoAgent, Settings
 
 client = RepoAgent(settings=Settings(data_dir=Path(".repoagent")))
 summary = client.index("./some-python-project")
-print(summary.chunk_count, summary.embedding_provider)
+print(summary.chunk_count, summary.node_count, summary.edge_count)
 
-response = client.search("./some-python-project", "verify password", top_k=3)
+response = client.search(
+    "./some-python-project", "verify password", strategy="hybrid_graph", top_k=3
+)
 for hit in response.results:
-    print(hit.rank, hit.chunk.file_path, hit.chunk.qualified_name, hit.score)
+    print(hit.rank, hit.chunk.file_path, hit.chunk.qualified_name, hit.evidence)
 
-analysis = client.analyze("./some-python-project")
-print(analysis.class_count, analysis.method_count)
+graph = client.graph("./some-python-project")
+print(len(graph.nodes), len(graph.edges))
 ```
 
 `index`, `search`, `analyze`, and `evaluate` return typed Pydantic models.
@@ -152,9 +196,12 @@ smoke test on Python 3.12/3.13.
 ## Architecture and next step
 
 Source modules live directly in `src/` (`sdk/`, `domain/`, `application/`,
-`adapters/`, `analysis/` (M2), `retrieval/` and `evaluation/` (M3), `cli/`).
-See [architecture](docs/architecture.md) for boundaries and the pipelines;
+`adapters/`, `analysis/` (M2), `retrieval/` and `evaluation/` (M3), `graph/`
+and `export/` (M4), `cli/`). See
+[architecture](docs/architecture.md) for boundaries and the pipelines;
 see [milestones](docs/milestones.md) for the roadmap.
 
-Next: **M4 — dependency/import/inheritance graph retrieval** built on M2
-relationships and evaluated with the M3 framework (strategy E).
+Next: **M5 — investigation** with a budgeted context engine, a typed
+investigator over retrieved evidence, and an OpenAI-compatible provider
+adapter. Graph-enhanced retrieval strategies keep being evaluated with the
+M3/M4 framework.

@@ -9,8 +9,6 @@ from repoagent.retrieval.embeddings import (
 )
 from repoagent.retrieval.models import (
     CodeChunk,
-    IndexSnapshot,
-    IndexSummary,
     RetrievalResult,
     RetrievalSource,
     RetrievalStrategy,
@@ -19,6 +17,7 @@ from repoagent.retrieval.models import (
     make_chunk_id,
     repository_identifier,
 )
+from repoagent.retrieval.persistence import IndexSnapshot, IndexSummary
 from repoagent.retrieval.rerank import KeywordOverlapReranker, Reranker
 from repoagent.retrieval.retrievers import (
     HybridRetriever,

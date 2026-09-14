@@ -4,6 +4,8 @@ import logging
 
 from repoagent.domain.errors import EmbeddingProviderError
 from repoagent.domain.repository import RepositorySpec
+from repoagent.graph.expansion import GraphExpander
+from repoagent.graph.store import store_from_snapshot
 from repoagent.ports.index_store import IndexStore
 from repoagent.retrieval.embeddings import EmbeddingProvider
 from repoagent.retrieval.models import (
@@ -38,11 +40,13 @@ class SearchService:
         repo_id = repository_identifier(spec.source)
         snapshot = self._store.load(repo_id)
         self._check_provider(snapshot)
+        expander = self._expander(snapshot)
         retriever = build_retriever(
             request.strategy,
             snapshot.chunks,
             self._provider,
             snapshot.vectors,
+            expander=expander,
         )
         results = retriever.search(request.query, request.top_k)
         reranked = False
@@ -61,6 +65,14 @@ class SearchService:
             reranked=reranked,
             results=results,
         )
+
+    def _expander(self, snapshot) -> GraphExpander | None:
+        """Build the graph expander when the snapshot carries a graph."""
+        if snapshot.graph is None or not snapshot.graph.nodes:
+            return None
+        store = store_from_snapshot(snapshot.graph)
+        chunks_by_qualified = {chunk.qualified_name: chunk for chunk in snapshot.chunks}
+        return GraphExpander(store, chunks_by_qualified)
 
     def _check_provider(self, snapshot) -> None:
         if (

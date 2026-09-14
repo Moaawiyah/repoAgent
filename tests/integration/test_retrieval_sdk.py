@@ -15,7 +15,7 @@ from repoagent import (
     Settings,
 )
 from repoagent.retrieval.embeddings import HashingEmbeddingProvider
-from repoagent.retrieval.models import IndexSummary
+from repoagent.retrieval.persistence import IndexSummary
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "rag_repo"
 CASES = Path(__file__).resolve().parents[1] / "fixtures" / "rag_cases.json"
@@ -81,5 +81,5 @@ def test_evaluation_through_the_facade(tmp_path):
     ]
     report = agent.evaluate(FIXTURE, cases, k=5)
     assert report.repository.endswith("rag_repo")
-    assert len(report.rows) == 3
+    assert len(report.rows) == 4
     assert all(0.0 <= row.recall_at_k <= 1.0 for row in report.rows)

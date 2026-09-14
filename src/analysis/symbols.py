@@ -3,6 +3,7 @@
 import ast
 
 from repoagent.analysis.models import (
+    CallSite,
     CodeSymbol,
     ImportedName,
     ImportInfo,
@@ -21,6 +22,7 @@ class ModuleVisitor(ast.NodeVisitor):
         self._stack: list[CodeSymbol] = []
         self.symbols: list[CodeSymbol] = []
         self.imports: list[ImportInfo] = []
+        self.calls: list[CallSite] = []
 
     def visit_Module(self, node: ast.Module) -> None:
         self.symbols.append(
@@ -67,6 +69,18 @@ class ModuleVisitor(ast.NodeVisitor):
                 ],
             )
         )
+
+    def visit_Call(self, node: ast.Call) -> None:
+        try:
+            expression = ast.unparse(node.func)
+        except (ValueError, AttributeError):
+            expression = ""
+        if expression:
+            caller = self._stack[-1].qualified_name if self._stack else self._module
+            self.calls.append(
+                CallSite(caller=caller, expression=expression, line=node.lineno)
+            )
+        self.generic_visit(node)
 
     def _function(self, node, *, is_async: bool) -> None:
         symbol_type = SymbolType.METHOD if self._in_class() else SymbolType.FUNCTION

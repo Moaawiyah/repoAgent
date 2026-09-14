@@ -15,6 +15,8 @@ class RetrievalSource(StrEnum):
     BM25 = "bm25"
     VECTOR = "vector"
     HYBRID = "hybrid"
+    GRAPH = "graph"
+    HYBRID_GRAPH = "hybrid_graph"
 
 
 class RetrievalStrategy(StrEnum):
@@ -23,6 +25,7 @@ class RetrievalStrategy(StrEnum):
     BM25 = "bm25"
     VECTOR = "vector"
     HYBRID = "hybrid"
+    HYBRID_GRAPH = "hybrid_graph"
 
 
 class CodeChunk(AnalysisModel):
@@ -59,6 +62,24 @@ class RetrievalResult(AnalysisModel):
     score: float
     source: RetrievalSource
     chunk: CodeChunk
+    evidence: list["Evidence"] = Field(default_factory=list)
+
+
+class GraphHop(AnalysisModel):
+    """One relationship step in a graph provenance path."""
+
+    source_symbol: str
+    relation: str
+    target_symbol: str
+
+
+class Evidence(AnalysisModel):
+    """Deterministic, structural explanation of why a result appeared."""
+
+    kind: str
+    rank: int | None = None
+    distance: int | None = None
+    path: list[GraphHop] = Field(default_factory=list)
 
 
 class SearchRequest(AnalysisModel):
@@ -88,29 +109,6 @@ class SearchResponse(AnalysisModel):
     strategy: RetrievalStrategy
     reranked: bool
     results: list[RetrievalResult]
-
-
-class IndexSnapshot(AnalysisModel):
-    """Persisted retrieval index for one repository."""
-
-    repo_id: str
-    repository_root: str
-    embedding_provider: str
-    embedding_dimension: int
-    chunks: list[CodeChunk]
-    vectors: dict[str, list[float]] = Field(default_factory=dict)
-
-
-class IndexSummary(AnalysisModel):
-    """Typed result of an indexing operation."""
-
-    repository_name: str
-    repository_id: str
-    repository_root: str
-    python_files: int
-    chunk_count: int
-    embedding_provider: str
-    embedding_dimension: int
 
 
 def repository_identifier(root: str) -> str:

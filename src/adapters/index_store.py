@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from repoagent.domain.errors import IndexNotFound, StorageError
-from repoagent.retrieval.models import IndexSnapshot
+from repoagent.retrieval.persistence import IndexSnapshot
 
 
 class JsonIndexStore:

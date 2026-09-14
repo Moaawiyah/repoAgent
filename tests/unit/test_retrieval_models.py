@@ -7,12 +7,12 @@ from repoagent.adapters.index_store import JsonIndexStore
 from repoagent.domain.errors import IndexNotFound, StorageError
 from repoagent.retrieval.models import (
     CodeChunk,
-    IndexSnapshot,
     SearchRequest,
     SymbolType,
     make_chunk_id,
     repository_identifier,
 )
+from repoagent.retrieval.persistence import IndexSnapshot
 
 
 def make_chunk(source="x = 1"):

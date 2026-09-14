@@ -42,6 +42,8 @@ packages = [
     "repoagent.cli",
     "repoagent.domain",
     "repoagent.evaluation",
+    "repoagent.export",
+    "repoagent.graph",
     "repoagent.ports",
     "repoagent.retrieval",
     "repoagent.sdk",

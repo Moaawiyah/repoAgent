@@ -35,3 +35,7 @@ class IndexNotFound(RetrievalError):
 
 class EmbeddingProviderError(RetrievalError):
     """Embedding generation or an embedding-provider mismatch occurred."""
+
+
+class ExportError(RepoAgentError):
+    """A graph export could not be written safely."""

@@ -17,7 +17,8 @@ from repoagent.domain.tasks import TaskEvent, TaskKind, TaskRecord, TaskRequest
 from repoagent.ports.index_store import IndexStore
 from repoagent.ports.task_store import TaskStore
 from repoagent.retrieval.embeddings import EmbeddingProvider
-from repoagent.retrieval.models import IndexSummary, RetrievalStrategy, SearchResponse
+from repoagent.retrieval.models import RetrievalStrategy, SearchResponse
+from repoagent.retrieval.persistence import IndexSummary
 from repoagent.sdk.retrieval import RetrievalApi
 
 Result = TypeVar("Result")

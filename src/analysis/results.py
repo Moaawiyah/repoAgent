@@ -4,6 +4,7 @@ from pydantic import Field, computed_field
 
 from repoagent.analysis.models import (
     AnalysisModel,
+    CallSite,
     CodeSymbol,
     ImportInfo,
     Relationship,
@@ -27,6 +28,7 @@ class FileAnalysis(AnalysisModel):
     line_count: int = 0
     symbols: list[CodeSymbol] = Field(default_factory=list)
     imports: list[ImportInfo] = Field(default_factory=list)
+    calls: list[CallSite] = Field(default_factory=list)
     error: FileError | None = None
 
 

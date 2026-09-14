@@ -29,16 +29,24 @@ from repoagent.domain.tasks import (
     TaskRequest,
     TaskStatus,
 )
+from repoagent.export.obsidian import ExportSummary
+from repoagent.graph.models import (
+    EdgeType,
+    GraphEdge,
+    GraphNode,
+    GraphSnapshot,
+    NodeType,
+)
 from repoagent.ports.task_store import TaskStore
 from repoagent.retrieval.models import (
     CodeChunk,
-    IndexSummary,
     RetrievalResult,
     RetrievalSource,
     RetrievalStrategy,
     SearchRequest,
     SearchResponse,
 )
+from repoagent.retrieval.persistence import IndexSummary
 from repoagent.sdk import RepoAgent
 
 __version__ = "0.1.0"
@@ -46,14 +54,20 @@ __version__ = "0.1.0"
 __all__ = [
     "CodeChunk",
     "CodeSymbol",
+    "EdgeType",
     "EmbeddingProviderError",
+    "ExportSummary",
     "FileAnalysis",
     "FileError",
+    "GraphEdge",
+    "GraphNode",
+    "GraphSnapshot",
     "ImportInfo",
     "ImportOrigin",
     "IndexNotFound",
     "IndexSummary",
     "InvalidTransition",
+    "NodeType",
     "RelationKind",
     "Relationship",
     "RepoAgent",

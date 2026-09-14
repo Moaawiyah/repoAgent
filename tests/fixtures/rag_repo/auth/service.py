@@ -9,6 +9,10 @@ class AuthService:
     def __init__(self, pepper: str) -> None:
         self._pepper = pepper
 
+    def authenticate(self, username: str, password: str) -> bool:
+        """Check an account's credentials before opening a session."""
+        return self.verify_password(password, self._digest(username))
+
     def verify_password(self, plaintext: str, hashed: str) -> bool:
         """Compare a candidate secret against the stored digest."""
         return hashed == self._digest(plaintext)

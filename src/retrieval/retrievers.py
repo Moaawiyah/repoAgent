@@ -1,11 +1,13 @@
-"""Retriever abstraction, vector retrieval, and RRF hybrid fusion."""
+"""Retriever abstraction, vector retrieval, and hybrid fusion."""
 
 from typing import Protocol
 
 from repoagent.retrieval.bm25 import BM25Retriever
 from repoagent.retrieval.embeddings import EmbeddingProvider
+from repoagent.retrieval.fusion import rrf_fuse
 from repoagent.retrieval.models import (
     CodeChunk,
+    Evidence,
     RetrievalResult,
     RetrievalSource,
     RetrievalStrategy,
@@ -54,9 +56,8 @@ class VectorRetriever:
 class HybridRetriever:
     """Fuses lexical and semantic rankings with Reciprocal Rank Fusion.
 
-    RRF combines ranks instead of raw scores, so incompatible score scales
-    are never mixed: ``score(d) = sum over retrievers of 1/(k + rank)``.
-    Ties break by chunk identifier, keeping results deterministic.
+    Per-source ranks are preserved as structured evidence so consumers can
+    explain which retriever found each result and at which rank.
     """
 
     def __init__(
@@ -67,25 +68,20 @@ class HybridRetriever:
 
     def search(self, query: str, top_k: int) -> list[RetrievalResult]:
         depth = max(top_k * 2, 10)
-        scores: dict[str, float] = {}
-        chunks: dict[str, CodeChunk] = {}
+        ranked: list[list[RetrievalResult]] = []
         for retriever in self._retrievers:
-            for rank, result in enumerate(retriever.search(query, depth), start=1):
-                chunk_id = result.chunk.chunk_id
-                scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (
-                    self._rrf_k + rank
-                )
-                chunks[chunk_id] = result.chunk
-        ordered = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
-        return [
-            RetrievalResult(
-                rank=rank,
-                score=score,
-                source=RetrievalSource.HYBRID,
-                chunk=chunks[chunk_id],
+            results = retriever.search(query, depth)
+            ranked.append(
+                [
+                    result.model_copy(
+                        update={
+                            "evidence": [Evidence(kind=result.source.value, rank=rank)]
+                        }
+                    )
+                    for rank, result in enumerate(results, start=1)
+                ]
             )
-            for rank, (chunk_id, score) in enumerate(ordered[:top_k], start=1)
-        ]
+        return rrf_fuse(ranked, self._rrf_k)[:top_k]
 
 
 def build_retriever(
@@ -93,11 +89,13 @@ def build_retriever(
     chunks: list[CodeChunk],
     provider: EmbeddingProvider,
     vectors: dict[str, list[float]],
+    expander: "object | None" = None,
 ) -> Retriever:
     """Materialize the configured strategy from an indexed snapshot.
 
     Vectors come from the persisted snapshot; chunk embedding never runs
-    at query time.
+    at query time. ``expander`` (a GraphExpander) is required only for
+    the hybrid_graph strategy.
     """
     lexical = BM25Retriever(chunks)
     if strategy is RetrievalStrategy.BM25:
@@ -110,4 +108,7 @@ def build_retriever(
     )
     if strategy is RetrievalStrategy.VECTOR:
         return semantic
-    return HybridRetriever(lexical, semantic)
+    from repoagent.retrieval.graph import build_graph_retriever
+
+    hybrid = HybridRetriever(lexical, semantic)
+    return build_graph_retriever(strategy, hybrid, expander)

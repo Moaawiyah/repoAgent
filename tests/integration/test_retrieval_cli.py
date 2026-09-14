@@ -72,9 +72,8 @@ def test_search_json_is_machine_readable(tmp_path):
 def test_search_strategies_and_rerank_flag(tmp_path):
     invoke(tmp_path, "index", str(FIXTURE))
     for strategy in ("bm25", "vector", "hybrid"):
-        result = invoke(
-            tmp_path, "search", str(FIXTURE), "cache", "--strategy", strategy, "--json"
-        )
+        args = ("search", str(FIXTURE), "cache", "--strategy", strategy, "--json")
+        result = invoke(tmp_path, *args)
         assert result.exit_code == 0, result.output
         assert json.loads(result.stdout)["strategy"] == strategy
     reranked = invoke(
@@ -121,9 +120,10 @@ def test_evaluate_compares_strategies(tmp_path):
         "bm25",
         "vector",
         "hybrid",
+        "hybrid_graph",
     ]
     for row in report["rows"]:
-        assert row["queries"] == 7
+        assert row["queries"] == 8
         assert 0.0 <= row["recall_at_k"] <= 1.0
         assert 0.0 <= row["mrr"] <= 1.0
         assert 0.0 <= row["hit_rate_at_k"] <= 1.0

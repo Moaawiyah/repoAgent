@@ -1,5 +1,44 @@
 # Architecture
 
+## M4 code knowledge graph
+
+```mermaid
+flowchart LR
+  Analysis[RepositoryAnalysis M2] --> Builder[RepositoryGraphBuilder]
+  Builder --> Resolver[CallResolver resolved / partial / unresolved]
+  Builder --> Store[GraphStore / InMemoryGraphStore]
+  Store --> Snap[GraphSnapshot persisted in IndexSnapshot]
+  Snap --> Expander[GraphExpander bounded traversal + scoring]
+  Hybrid[HybridRetriever RRF seeds] --> HGR[HybridGraphRetriever]
+  Expander --> HGR
+  HGR --> Out[SearchResponse + evidence]
+  Store --> Obs[ObsidianExporter vault]
+```
+
+- Node identity is the qualified name; nodes carry file, line span, parent,
+  module, and the linked chunk ID. Edges are typed (DEFINES, CONTAINS,
+  IMPORTS, INHERITS, CALLS) and mark `resolved: false` for ambiguous
+  targets instead of inventing certainty.
+- CALLS edges come from raw call sites recorded by the M2 visitor and
+  resolved conservatively: `self.x()` against the caller's class; bare
+  names via the same module or a unique repository-wide simple name;
+  dotted calls via unique qualified suffix. Ambiguous names stay partial;
+  unknown targets produce no edge.
+- Traversal is breadth-first with hard bounds (`max_depth`, `max_nodes`,
+  edge-type allowlists); a visited set makes cycles harmless; every result
+  records graph distance and the relationship path.
+- Graph candidates are scored `seed_rank_weight × decay^(distance-1) ×
+  min(edge weights)` — deterministic and independently testable.
+- `HybridGraphRetriever` reuses the shared `rrf_fuse` implementation for
+  both the seed fusion and the seed/graph fusion, so no ranking logic is
+  duplicated. Evidence on each result distinguishes bm25 rank, vector
+  rank, hybrid seed rank, and graph distance/path.
+- The `ObsidianExporter` renders the graph (the source of truth) into a
+  deterministic Markdown vault. Note names are sanitized; wikilinks exist
+  only for real, resolved relationships; repository text is confined to
+  code spans and injection-safe fences; exports never delete and require
+  explicit overwrite intent for non-empty destinations.
+
 ## M3 retrieval pipeline
 
 `repoagent index` and `repoagent search` run a separated retrieval pipeline:
