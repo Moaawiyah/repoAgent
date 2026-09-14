@@ -94,3 +94,13 @@ code modification or execution methods to the agent.
 content; callers must index first. It returns a typed `RepairReport` containing the
 M5 investigation, optional `PatchProposal`, deterministic `StaticValidation`,
 review history, and an explicit status. The SDK never writes target code or runs it.
+
+## M7 validated repair
+
+`client.repair_and_validate(source, issue, max_attempts=None, max_revisions=None,
+timeout=None, provider=None)` returns a `ValidatedRepairReport` with the
+investigation, detected `ValidationPlan`, baseline `ValidationResult`, every
+`RepairAttempt` (patch, reviews, validation, failure analysis, summary), metrics,
+and an `ExecutionStatus`. Inject `RepoAgent(sandbox_runner=...)` to replace the
+default `DockerSandboxRunner`; implementations must satisfy the `SandboxRunner`
+protocol and clean up on exit. The SDK never runs target code outside the runner.

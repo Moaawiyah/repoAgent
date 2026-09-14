@@ -15,14 +15,19 @@ class DeveloperAgent:
     def __init__(self, provider: LLMProvider) -> None:
         self._provider = provider
 
-    def propose(self, report: InvestigationReport, feedback: str = "") -> PatchProposal:
+    def propose(
+        self,
+        report: InvestigationReport,
+        feedback: str = "",
+        runtime: dict | None = None,
+    ) -> PatchProposal:
         """Generate exactly one bounded proposal from evidence-backed context."""
         try:
             _, output = structured_generate(
                 self._provider,
                 "patch_proposal",
                 SYSTEM,
-                repair_context(report, feedback),
+                repair_context(report, feedback, runtime=runtime),
                 DeveloperOutput,
             )
         except LLMError:

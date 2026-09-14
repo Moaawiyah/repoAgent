@@ -51,3 +51,15 @@ class LLMOutputError(LLMError):
 
 class InvestigationError(RepoAgentError):
     """An investigation could not be started or executed."""
+
+
+class SandboxError(RepoAgentError):
+    """The sandbox could not be created, executed, or cleaned up safely."""
+
+
+class UnsafeCommandError(SandboxError):
+    """A command or dependency specification violated the execution policy."""
+
+
+class WorkspaceError(SandboxError):
+    """A disposable workspace could not be prepared or patched safely."""

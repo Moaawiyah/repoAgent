@@ -18,8 +18,10 @@ from repoagent.domain.errors import (
     RepoAgentError,
     RepositoryInvalid,
     RetrievalError,
+    SandboxError,
     StorageError,
     TaskNotFound,
+    UnsafeCommandError,
     UnsupportedSchema,
 )
 from repoagent.domain.evidence import EvidenceItem
@@ -36,7 +38,15 @@ from repoagent.domain.repair import (
     RepairReport,
     RepairStatus,
 )
+from repoagent.domain.repair_execution import (
+    ExecutionStatus,
+    FailureAnalysis,
+    RepairAttempt,
+    RepairMetrics,
+    ValidatedRepairReport,
+)
 from repoagent.domain.repository import RepositorySpec
+from repoagent.domain.sandbox import CommandResult, SandboxLimits, ValidationPlan
 from repoagent.domain.tasks import (
     TaskEvent,
     TaskKind,
@@ -44,6 +54,7 @@ from repoagent.domain.tasks import (
     TaskRequest,
     TaskStatus,
 )
+from repoagent.domain.validation import TestFailure, ValidationResult
 from repoagent.export.obsidian import ExportSummary
 from repoagent.graph.models import (
     EdgeType,
@@ -52,6 +63,7 @@ from repoagent.graph.models import (
     GraphSnapshot,
     NodeType,
 )
+from repoagent.ports.sandbox import SandboxRunner, SandboxSession
 from repoagent.ports.task_store import TaskStore
 from repoagent.retrieval.models import (
     CodeChunk,
@@ -79,6 +91,20 @@ __all__ = [
     "PatchReview",
     "RepairReport",
     "RepairStatus",
+    "CommandResult",
+    "ExecutionStatus",
+    "FailureAnalysis",
+    "RepairAttempt",
+    "RepairMetrics",
+    "SandboxError",
+    "SandboxLimits",
+    "SandboxRunner",
+    "SandboxSession",
+    "TestFailure",
+    "UnsafeCommandError",
+    "ValidatedRepairReport",
+    "ValidationPlan",
+    "ValidationResult",
     "CodeSymbol",
     "EdgeType",
     "EmbeddingProviderError",

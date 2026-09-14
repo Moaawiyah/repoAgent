@@ -56,8 +56,10 @@ packages = [
     "repoagent.graph",
     "repoagent.ports",
     "repoagent.retrieval",
+    "repoagent.sandbox",
     "repoagent.sdk",
     "repoagent.tools",
+    "repoagent.validation",
 ]
 package-dir = {repoagent = "src"}
 

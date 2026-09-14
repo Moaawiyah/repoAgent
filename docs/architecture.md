@@ -298,3 +298,45 @@ Final reports and observable traces persist as JSON artifacts outside the target
 repository; the M1 SQLite lifecycle remains separate. See
 [M5 architecture](m5-investigation.md) for state, nodes, contracts, budgets,
 security boundaries, validation, and inherited limitations. Repair remains M6.
+
+## M7 implemented sandboxed validation and repair loop
+
+```mermaid
+flowchart TD
+  CLI[repair --execute] --> SDK[RepoAgent.repair_and_validate]
+  SDK --> Service[ValidatedRepairService]
+  Service --> Detect[ProjectDetector static plan]
+  Service --> Port[SandboxRunner port]
+  Docker[DockerSandboxRunner / DockerSession] --> Port
+  Service --> Loop[ExecutionRepairAgent LangGraph]
+  Loop --> Baseline[baseline] --> Propose[propose = M6 RepairAgent]
+  Propose --> Execute[execute: fresh copy + patch + validate]
+  Execute -->|pass / terminal| Report[report]
+  Execute -->|fail| Analyze[triage or Failure Analyzer]
+  Analyze -->|revise| Propose
+  Analyze -->|root cause uncertain| Reinvestigate[Investigator] --> Propose
+  Analyze -->|stop| Report
+```
+
+- **Layers.** `domain/sandbox.py`, `domain/validation.py`, and
+  `domain/repair_execution.py` hold framework-free contracts (`CommandSpec`,
+  `SandboxLimits`, `CommandResult`, `ValidationResult`, `TestFailure`,
+  `RepairAttempt`, `FailureAnalysis`, `RepairMetrics`, `ValidatedRepairReport`).
+  `ports/sandbox.py` defines `SandboxRunner`/`SandboxSession`. `validation/` is
+  deterministic and Docker-free (detection, command policy, parsers, evaluator).
+  `sandbox/` contains all Docker/process/filesystem specifics.
+- **Reuse.** The `propose` node runs the complete M6 Developer → static validator
+  → Reviewer graph, now accepting bounded `runtime_validation_feedback`.
+  `StaticPatchValidator.apply` returns patched contents and is reused by
+  `WorkspacePatcher` against the disposable copy. Re-investigation reuses
+  `InvestigationService` with the original issue plus the runtime observation.
+- **Session model.** One session per repair prepares dependencies once (separate
+  networked container without the repository), then each baseline/attempt run
+  creates a fresh workspace, applies the patch, runs allowlisted commands with
+  `--network none`, fingerprints the original repository, and destroys the copy.
+- **Bounds.** `RepairLoopLimits` caps attempts, review revisions, and
+  re-investigations and derives the LangGraph recursion limit. Any terminal
+  `status` routes straight to `report`. Identical diffs stop the loop; identical
+  failure signatures reuse the previous analysis without an LLM call.
+- **Truthful status.** The reporter downgrades any `VALIDATED` state lacking a
+  passing patched validation. Reports persist at `<data-dir>/repairs/<UUID>.json`.

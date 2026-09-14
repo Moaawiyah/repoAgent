@@ -21,6 +21,7 @@ class RepairState(BaseModel):
     validation: StaticValidation | None = None
     reviews: list[PatchReview] = Field(default_factory=list)
     feedback: str = ""
+    runtime: dict | None = None
     revisions: int = 0
     report: RepairReport | None = None
     error: str | None = None

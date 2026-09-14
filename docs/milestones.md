@@ -1,6 +1,6 @@
 # Milestone implementation roadmap
 
-M1–M5 are implemented, with delivered limitations recorded below. Complete and validate each milestone before
+M1–M7 are implemented, with delivered limitations recorded below. Complete and validate each milestone before
 advancing. All development gates: passing pytest, Ruff lint/format, >85%
 statement coverage, and <=150 physical lines per Python file. Use meaningful
 unit/integration tests.
@@ -114,3 +114,14 @@ M6 adds a read-only Developer → static validator → Reviewer LangGraph. It co
 M5 evidence, generates bounded unified diffs, validates them only in memory, and
 preserves reviewer decisions through bounded revisions. `repair` outputs unapplied,
 unexecuted proposals; M7 must supply sandboxed runtime validation.
+
+## M7 delivered
+
+M7 adds `repair --execute` / `RepoAgent.repair_and_validate`: static validation
+detection, an allowlisted command policy, a `SandboxRunner` port with a hardened
+`DockerSandboxRunner`, baseline and patched pytest/Ruff validation with regression
+detection, deterministic failure triage, an LLM Failure Analyzer, bounded
+Developer revision retries, bounded Investigator re-entry, per-repair metrics, and
+persisted attempt histories. By explicit request, the bounded retry loop and attempt
+persistence listed under M8 above were delivered in M7. Benchmark adapters and
+strategy comparisons remain future work; see the README for isolation limitations.

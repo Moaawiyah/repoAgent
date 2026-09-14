@@ -4,7 +4,10 @@ An independent repository engineering platform. M1–M4 provide static analysis,
 structure-aware retrieval, and a code knowledge graph. **M5 adds a read-only,
 LangGraph-powered Investigator with Groq and OpenAI provider adapters.**
 
-**RepoAgent M6 proposes and statically reviews patches, but never applies or executes them.**
+**M6 proposes and statically reviews patches. M7 (`repair --execute`) applies an
+approved patch only to a disposable copy inside a hardened Docker sandbox, runs
+detected validation, analyzes failures, and retries within strict bounds. The
+original repository is never modified.**
 
 ## Setup
 
@@ -17,7 +20,8 @@ uv run repoagent --version
 ```
 
 Analysis, retrieval, and automated tests run offline after installation. Live
-investigation requires a configured provider and API key; Docker is not required.
+investigation requires a configured provider and API key. Docker is required only
+for `repair --execute` (M7); nothing else executes target code.
 
 ## Analyzing repositories (M2)
 
@@ -300,8 +304,8 @@ and `export/` (M4), `cli/`). See
 [architecture](docs/architecture.md) for boundaries and the pipelines;
 see [milestones](docs/milestones.md) for the roadmap.
 
-Next: **M6 — typed Developer/Reviewer agents and minimal patch generation**.
-Keep patches unvalidated until M7 provides isolated execution. M5 adds no repair tools.
+Next: **M8 — benchmarking** (synthetic, BugsInPy, SWE-bench subsets) consuming the
+M7 repair metrics. M8 is not implemented.
 
 ## Static repair proposals (M6)
 
@@ -331,5 +335,142 @@ The patch is never applied to the target tree and target code is never executed.
 M6 exposes no shell, write, git, browser, or test tools. Revision feedback and
 review history are stored in the returned report, with an explicit terminal status
 for rejection, insufficient investigation, provider failure, or revision limit.
-Runtime tests, patch application, Docker isolation, and runtime retry loops belong
-to M7/M8. Static validation does not prove that a patch fixes behavior.
+Static validation does not prove that a patch fixes behavior; use `--execute` (M7).
+
+## Sandboxed validation and repair loop (M7)
+
+```sh
+uv run repoagent --env-file .env --data-dir /tmp/repoagent-data index ./project
+uv run repoagent --env-file .env --data-dir /tmp/repoagent-data repair \
+  ./project "Users with uppercase email addresses cannot log in" \
+  --execute --max-attempts 3 --timeout 300
+```
+
+Without `--execute`, `repair` behaves exactly as in M6 and runs nothing;
+`--max-attempts`/`--timeout` without `--execute` are rejected (exit 2).
+`--execute` exits 0 only for `VALIDATED`, otherwise 1.
+
+```text
+Detect validation (static) → Docker available? → Investigator
+  → Baseline (unpatched copy) → Developer → Static Validator → Reviewer
+  → Sandbox (fresh copy + patch) → Validate
+        PASS → VALIDATED
+        FAIL → deterministic triage ─┬→ Failure Analyzer (LLM, only if needed)
+                                     ├→ Developer revision (runtime feedback)
+                                     └→ Investigator re-entry (root cause uncertain, bounded)
+```
+
+Example output (fixture run):
+
+```text
+Investigation
+✓ root cause localized: raw email equality lookup
+Sandbox
+✓ created
+Baseline
+✗ 1 tests failed, 0 errors
+Attempt 1
+  Developer ✓ patch generated: Normalize both values before email comparison.
+  Reviewer ✓ approve
+  ✗ 2 tests failed, 0 errors
+  Failure Analyzer → patch missed normalization in secondary lookup
+Attempt 2
+  Developer ✓ patch generated: ...
+  Reviewer ✓ approve
+  ✓ tests passed (3 passed, 0 skipped)
+Result:
+VALIDATED
+```
+
+**Statuses.** `validated`, `validation_failed` (analyzer says stop, or the
+Developer repeated a failed patch), `patch_apply_failed`, `sandbox_failed`,
+`timeout`, `max_attempts`, `baseline_failed` (baseline could not run to a parseable
+result), `insufficient_evidence`, `validation_unavailable` (no pytest detected),
+`review_rejected`, `provider_error`. Developer/Reviewer approval alone never yields
+`validated`.
+
+**Validation rule.** A repair is `VALIDATED` only if the sandbox completed, the
+original repository fingerprint is unchanged, pytest exits 0 on the patched copy,
+and Ruff (when the project configures it) reports no violation absent from the
+baseline. The baseline distinguishes pre-existing failures (`fixed_failures`,
+`persisting_failures`) from regressions (`new_failures`, `new_lint`).
+
+**Commands.** Validation commands come from static detection
+(`pyproject.toml`, `pytest.ini`, `setup.cfg`, `tox.ini`, `tests/`, `ruff.toml`),
+never from model output. Command kinds are an enum mapped to constant argv
+vectors (`python -m pytest -q -rfE -p no:cacheprovider -o addopts=`,
+`python -m ruff check --no-cache --output-format=concise .`) and filtered by an
+allowlist. Dependencies are installed wheel-only (`--only-binary=:all:`) from
+specifiers that must match a strict name/extras/version grammar; URLs, paths,
+options, `-e`, and markers are skipped and recorded.
+
+**Token efficiency.** Exit codes, pytest/Ruff results, patch application,
+timeouts, collection errors, lint-only failures, and repeated identical failures
+are handled deterministically. The Failure Analyzer is called only for genuine test
+failures and receives the issue, root cause, current diff (≤6000 chars), at most
+four evidence snippets from patched files, failing tests, a ≤2000-char output
+tail, and one-line summaries of previous attempts. Sandbox and index availability
+are checked before any LLM call.
+
+**Configuration** (`REPOAGENT_` prefix): `EXECUTION_TIMEOUT` (per command,
+seconds), `REPAIR_MAX_ATTEMPTS`, `REPAIR_MAX_REINVESTIGATIONS`, `SANDBOX_IMAGE`,
+`SANDBOX_MEMORY_MB`, `SANDBOX_CPUS`, `SANDBOX_PIDS_LIMIT`,
+`SANDBOX_MAX_OUTPUT_BYTES`, `SANDBOX_INSTALL_TIMEOUT`, `SANDBOX_NETWORK`
+(`install_only`|`none`), `SANDBOX_DEPENDENCIES` (`project`|`tools`|`none`),
+`SANDBOX_CLEANUP` (`always`|`keep_failed_workspace`),
+`SANDBOX_ALLOWED_COMMANDS`, `SANDBOX_WORKSPACE_DIR`.
+
+**Security controls.** Every target is treated as hostile:
+
+- A fresh host-private copy per run; `.git`, virtualenvs, caches, symlinks,
+  FIFOs/devices, `.env*`, keys, `.netrc`/`.pypirc`/`.npmrc` are never copied;
+  files are opened with `O_NOFOLLOW`; file-count and size limits apply.
+- The patch is re-checked against the copy (path traversal, stale context, syntax)
+  and written without following links; failure is `patch_apply_failed`.
+- Containers: `--network none` for validation, `--read-only` root filesystem,
+  `/tmp` tmpfs, `--cap-drop ALL`, `no-new-privileges`, non-root user, memory,
+  swap, CPU, PID, open-file and file-size limits, `--init`, explicit minimal
+  environment (no host variables), only the copy and the dependency directory
+  mounted (dependencies read-only).
+- Dependency preparation runs in a separate container that mounts only the empty
+  dependency directory; the repository is never present while network is enabled.
+- Host `docker` CLI calls use argv lists (`shell=False`), a minimal environment
+  (no API keys), head/tail-bounded output capture, and process-group kill plus
+  `docker rm --force` on timeout.
+- Workspaces, dependency directories, and containers are removed after success,
+  failure, patch errors, timeouts, and exceptions.
+
+**Remaining isolation limitations.** Docker shares the host kernel; a kernel or
+runtime escape is out of scope (use gVisor/Kata/Firecracker or a VM for stronger
+isolation). Dependency installation with `install_only` network can reach any
+package index host and installs the target's declared wheels, whose import-time
+code then runs (offline) during tests. Docker Desktop on macOS/Windows applies
+limits to its VM. Rootless Docker and user-namespace remapping are not configured
+by RepoAgent. Running RepoAgent as root maps the container to `nobody`, which may
+not be able to read the private workspace. Image references are validated but not
+digest-pinned by default; pin `REPOAGENT_SANDBOX_IMAGE` by digest for
+reproducibility.
+
+**Other limitations.** Only Python/pytest (+Ruff) validation is supported; target
+repositories needing services, databases, compilers, or sdists will fail with
+`baseline_failed`/`sandbox_failed`. Dependency manifests changed by a patch are not
+re-installed. Failure analysis and re-investigation are bounded but not calibrated;
+retrieval for re-investigation uses the stored index snapshot. The loop is
+synchronous and reports persist at `<data-dir>/repairs/<UUID>.json` without
+crash-resumable checkpoints.
+
+SDK:
+
+```python
+report = client.repair_and_validate(
+    "./project", "Uppercase emails cannot log in", max_attempts=3, timeout=300
+)
+print(report.status, report.metrics.attempts, report.metrics.llm_calls)
+for attempt in report.attempts:
+    print(attempt.number, attempt.validation.summary, attempt.failure_analysis)
+```
+
+`RepoAgent(sandbox_runner=...)` accepts any `SandboxRunner` implementation; the
+default is `DockerSandboxRunner`. Metrics per repair: attempts, LLM calls,
+retrieval calls, investigations, files/lines changed, validation and sandbox
+seconds, tests before/after, and final status.

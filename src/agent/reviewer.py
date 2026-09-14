@@ -19,6 +19,7 @@ class ReviewerAgent:
         report: InvestigationReport,
         proposal: PatchProposal,
         validation: StaticValidation,
+        runtime: dict | None = None,
     ) -> PatchReview:
         """Review only the supplied proposal; invalid patches cannot be approved."""
         if not validation.valid:
@@ -32,7 +33,9 @@ class ReviewerAgent:
             self._provider,
             "patch_review",
             SYSTEM,
-            repair_context(report, proposal=proposal, validation=validation),
+            repair_context(
+                report, proposal=proposal, validation=validation, runtime=runtime
+            ),
             ReviewerOutput,
         )
         return PatchReview(**output.model_dump())

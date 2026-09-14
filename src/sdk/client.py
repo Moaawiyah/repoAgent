@@ -12,6 +12,7 @@ from repoagent.domain.repository import RepositorySpec
 from repoagent.domain.tasks import TaskEvent, TaskKind, TaskRecord, TaskRequest
 from repoagent.evaluation.models import EvaluationReport, RetrievalCase
 from repoagent.ports.index_store import IndexStore
+from repoagent.ports.sandbox import SandboxRunner
 from repoagent.ports.task_store import TaskStore
 from repoagent.retrieval.embeddings import EmbeddingProvider
 from repoagent.retrieval.models import RetrievalStrategy, SearchResponse
@@ -36,6 +37,7 @@ class RepoAgent(RepairCapability):
         store: TaskStore | None = None,
         index_store: IndexStore | None = None,
         embedding_provider: EmbeddingProvider | None = None,
+        sandbox_runner: SandboxRunner | None = None,
     ) -> None:
         self._settings = (
             settings.model_copy(deep=True) if settings is not None else None
@@ -43,6 +45,7 @@ class RepoAgent(RepairCapability):
         self._tasks = TaskApi(self._settings, store)
         self._index_store = index_store
         self._embedding_provider = embedding_provider
+        self._sandbox_runner = sandbox_runner
         self._retrieval: RetrievalApi | None = None
 
     def submit(self, request: TaskRequest) -> TaskRecord:
@@ -129,7 +132,7 @@ class RepoAgent(RepairCapability):
     def fix(
         self, source: str | Path, issue: str, *, commit: str | None = None
     ) -> TaskRecord:
-        """Request a validated repair (blocked until M7)."""
+        """Record a fix task; use ``repair_and_validate`` for M7 execution."""
         return self._tasks.repository_task(TaskKind.FIX, source, commit, issue)
 
     def test(self, source: str | Path, *, commit: str | None = None) -> TaskRecord:

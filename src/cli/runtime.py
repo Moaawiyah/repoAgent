@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from repoagent import RepoAgent
 from repoagent.analysis.render import render_analysis
 from repoagent.analysis.results import RepositoryAnalysis
+from repoagent.cli.execution_render import render_validated_repair
 from repoagent.cli.investigation_render import render_investigation
 from repoagent.cli.render import (
     render_evaluation,
@@ -25,6 +26,7 @@ from repoagent.config import Settings
 from repoagent.domain.errors import RepoAgentError
 from repoagent.domain.investigation import InvestigationReport
 from repoagent.domain.repair import RepairReport
+from repoagent.domain.repair_execution import ValidatedRepairReport
 from repoagent.domain.tasks import TaskEvent, TaskRecord
 from repoagent.evaluation.models import EvaluationReport
 from repoagent.export.obsidian import ExportSummary
@@ -78,7 +80,8 @@ def output(
     | GraphInspection
     | ExportSummary
     | InvestigationReport
-    | RepairReport,
+    | RepairReport
+    | ValidatedRepairReport,
     as_json: bool,
 ) -> None:
     if as_json:
@@ -100,6 +103,7 @@ def output(
         (ExportSummary, render_export),
         (InvestigationReport, render_investigation),
         (RepairReport, render_repair),
+        (ValidatedRepairReport, render_validated_repair),
     )
     for value_type, renderer in renderers:
         if isinstance(value, value_type):

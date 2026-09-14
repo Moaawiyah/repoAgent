@@ -29,6 +29,21 @@ class Settings(BaseSettings):
     llm_timeout: int = Field(default=60, ge=1, le=300)
     llm_max_output_tokens: int = Field(default=2000, ge=128, le=8000)
     repair_max_revisions: int = Field(default=2, ge=0, le=5)
+    repair_max_attempts: int = Field(default=3, ge=1, le=10)
+    repair_max_reinvestigations: int = Field(default=1, ge=0, le=3)
+    sandbox_image: str = "python:3.12-slim"
+    sandbox_memory_mb: int = Field(default=1024, ge=64, le=65536)
+    sandbox_cpus: float = Field(default=2.0, gt=0, le=64)
+    sandbox_pids_limit: int = Field(default=256, ge=16, le=4096)
+    sandbox_max_output_bytes: int = Field(default=64000, ge=1024, le=10_000_000)
+    sandbox_install_timeout: int = Field(default=600, ge=1, le=3600)
+    sandbox_network: Literal["none", "install_only"] = "install_only"
+    sandbox_dependencies: Literal["none", "tools", "project"] = "project"
+    sandbox_cleanup: Literal["always", "keep_failed_workspace"] = "always"
+    sandbox_allowed_commands: list[Literal["pytest", "ruff_check"]] = Field(
+        default_factory=lambda: ["pytest", "ruff_check"]
+    )
+    sandbox_workspace_dir: Path | None = None
 
     @field_validator("data_dir")
     @classmethod

@@ -17,28 +17,32 @@ class StaticPatchValidator:
     def validate(self, unified_diff: str) -> StaticValidation:
         """Parse, context-check, and syntax-check a standard text patch."""
         try:
-            changes = self._parse(unified_diff)
-            if len(changes) > MAX_FILES:
-                raise ValueError("Patch changes too many files")
-            changed = 0
-            files = []
-            for path, hunks in changes.items():
-                target = self._target(path)
-                before = target.read_text(encoding="utf-8")
-                after, count = self._apply(before, hunks)
-                changed += count
-                if changed > MAX_CHANGED_LINES:
-                    raise ValueError("Patch changes too many lines")
-                if path.endswith(".py"):
-                    ast.parse(after, filename=path)
-                files.append(path)
+            patched, changed = self.apply(unified_diff)
             return StaticValidation(
-                valid=True, changed_files=files, changed_lines=changed
+                valid=True, changed_files=list(patched), changed_lines=changed
             )
         except (OSError, SyntaxError, UnicodeError, ValueError) as error:
             return StaticValidation(valid=False, errors=[str(error)])
 
-    def _target(self, path: str) -> Path:
+    def apply(self, unified_diff: str) -> tuple[dict[str, str], int]:
+        """Return patched file contents and changed-line count; never writes."""
+        changes = self._parse(unified_diff)
+        if len(changes) > MAX_FILES:
+            raise ValueError("Patch changes too many files")
+        changed, patched = 0, {}
+        for path, hunks in changes.items():
+            before = self.target(path).read_text(encoding="utf-8")
+            after, count = self._apply(before, hunks)
+            changed += count
+            if changed > MAX_CHANGED_LINES:
+                raise ValueError("Patch changes too many lines")
+            if path.endswith(".py"):
+                ast.parse(after, filename=path)
+            patched[path] = after
+        return patched, changed
+
+    def target(self, path: str) -> Path:
+        """Resolve a patch path to an existing, non-symlinked in-root file."""
         candidate = PurePosixPath(path)
         if candidate.is_absolute() or ".." in candidate.parts or "\\" in path:
             raise ValueError("Unsafe patch path")

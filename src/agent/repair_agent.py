@@ -30,7 +30,9 @@ class RepairAgent:
     def _develop(self, state: RepairState) -> dict:
         try:
             return {
-                "proposal": self._developer.propose(state.investigation, state.feedback)
+                "proposal": self._developer.propose(
+                    state.investigation, state.feedback, state.runtime
+                )
             }
         except LLMError:
             return {"error": "Developer output failed validation"}
@@ -45,7 +47,7 @@ class RepairAgent:
             return {"error": "Patch validation is unavailable"}
         try:
             review = self._reviewer.review(
-                state.investigation, state.proposal, state.validation
+                state.investigation, state.proposal, state.validation, state.runtime
             )
         except LLMError:
             return {"error": "Reviewer output failed validation"}
@@ -80,12 +82,15 @@ class RepairAgent:
         graph.add_edge("report", END)
         return graph.compile()
 
-    def run(self, report: InvestigationReport) -> RepairReport:
+    def run(
+        self, report: InvestigationReport, runtime: dict | None = None
+    ) -> RepairReport:
         """Return a patch proposal/review only; do not mutate the repository."""
         state = RepairState(
             repository=report.repository,
             investigation=report,
             max_revisions=self._max_revisions,
+            runtime=runtime,
         )
         result = self._graph.invoke(
             state, config={"recursion_limit": 20 + 5 * self._max_revisions}
