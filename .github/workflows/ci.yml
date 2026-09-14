@@ -1,4 +1,4 @@
-name: M1 quality
+name: RepoAgent quality
 on: [push, pull_request]
 permissions:
   contents: read
@@ -27,3 +27,5 @@ jobs:
           cd /tmp
           /tmp/repoagent-wheel/bin/repoagent --version
           /tmp/repoagent-wheel/bin/repoagent --help
+          /tmp/repoagent-wheel/bin/repoagent investigate --help
+          /tmp/repoagent-wheel/bin/python -c "from repoagent import RepoAgent, Issue, InvestigationReport; import langgraph.graph"

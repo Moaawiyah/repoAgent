@@ -1,30 +1,28 @@
 """Object-oriented SDK facade shared by Python consumers and the CLI."""
 
-import sqlite3
-from collections.abc import Callable
 from pathlib import Path
-from typing import TypeVar
 from uuid import UUID
 
-from repoagent.adapters.sqlite.task_store import SQLiteTaskStore
+from repoagent.ai.provider import LLMProvider
 from repoagent.analysis.analyzer import RepositoryAnalyzer
 from repoagent.analysis.results import RepositoryAnalysis
-from repoagent.application.tasks import TaskService
 from repoagent.config import Settings
-from repoagent.domain.errors import StorageError
+from repoagent.domain.investigation import InvestigationReport, Issue
 from repoagent.domain.repository import RepositorySpec
 from repoagent.domain.tasks import TaskEvent, TaskKind, TaskRecord, TaskRequest
+from repoagent.evaluation.models import EvaluationReport, RetrievalCase
 from repoagent.ports.index_store import IndexStore
 from repoagent.ports.task_store import TaskStore
 from repoagent.retrieval.embeddings import EmbeddingProvider
 from repoagent.retrieval.models import RetrievalStrategy, SearchResponse
 from repoagent.retrieval.persistence import IndexSummary
+from repoagent.sdk.investigation import InvestigationApi
+from repoagent.sdk.repair_capability import RepairCapability
 from repoagent.sdk.retrieval import RetrievalApi
+from repoagent.sdk.tasks import TaskApi
 
-Result = TypeVar("Result")
 
-
-class RepoAgent:
+class RepoAgent(RepairCapability):
     """Lazy SDK client composing an application service and replaceable stores.
 
     Construction performs no I/O and returns typed domain objects; no log
@@ -42,51 +40,24 @@ class RepoAgent:
         self._settings = (
             settings.model_copy(deep=True) if settings is not None else None
         )
-        self._store = store
+        self._tasks = TaskApi(self._settings, store)
         self._index_store = index_store
         self._embedding_provider = embedding_provider
-        self._service: TaskService | None = None
         self._retrieval: RetrievalApi | None = None
-
-    def _run(self, operation: Callable[[TaskService], Result]) -> Result:
-        try:
-            if self._service is None:
-                store = self._store
-                if store is None:
-                    settings = self._settings or Settings()
-                    store = SQLiteTaskStore(settings.data_dir / "tasks.sqlite3")
-                self._service = TaskService(store)
-            return operation(self._service)
-        except (OSError, sqlite3.Error):
-            raise StorageError("Storage or filesystem operation failed") from None
 
     def submit(self, request: TaskRequest) -> TaskRecord:
         """Record a validated workflow request; unavailable work returns blocked."""
-        return self._run(lambda service: service.submit(request))
+        return self._tasks.run(lambda service: service.submit(request))
 
     def get_task(self, task_id: UUID | str) -> TaskRecord:
         """Read a persisted task; raise TaskNotFound for unknown UUIDs."""
         identifier = UUID(str(task_id))
-        return self._run(lambda service: service.get(identifier))
+        return self._tasks.run(lambda service: service.get(identifier))
 
     def task_events(self, task_id: UUID | str) -> list[TaskEvent]:
         """Read public lifecycle events in sequence order."""
         identifier = UUID(str(task_id))
-        return self._run(lambda service: service.events(identifier))
-
-    def _repository_task(
-        self,
-        kind: TaskKind,
-        source: str | Path,
-        commit: str | None,
-        description: str | None = None,
-    ) -> TaskRecord:
-        request = TaskRequest(
-            kind=kind,
-            repository=RepositorySpec(source=str(source), commit=commit),
-            description=description,
-        )
-        return self.submit(request)
+        return self._tasks.run(lambda service: service.events(identifier))
 
     def retrieval(self) -> RetrievalApi:
         """Access the M3 retrieval capability (index, search, evaluate)."""
@@ -117,9 +88,30 @@ class RepoAgent:
             source, query, strategy=strategy, top_k=top_k, rerank=rerank
         )
 
-    def evaluate(self, source: str | Path, cases, *, k: int = 5, strategies=None):
+    def evaluate(
+        self,
+        source: str | Path,
+        cases: list[RetrievalCase],
+        *,
+        k: int = 5,
+        strategies: list[RetrievalStrategy] | None = None,
+    ) -> EvaluationReport:
         """Compare retrieval strategies on labeled cases (M3)."""
         return self.retrieval().evaluate(source, cases, k=k, strategies=strategies)
+
+    def investigate(
+        self,
+        source: str | Path,
+        issue: Issue | str,
+        *,
+        max_iterations: int | None = None,
+        top_k: int = 5,
+        provider: LLMProvider | None = None,
+    ) -> InvestigationReport:
+        api = InvestigationApi(self._settings or Settings(), self.retrieval())
+        return api.investigate(
+            source, issue, max_iterations=max_iterations, top_k=top_k, provider=provider
+        )
 
     def analyze(
         self, source: str | Path, *, commit: str | None = None
@@ -132,17 +124,17 @@ class RepoAgent:
         self, source: str | Path, question: str, *, commit: str | None = None
     ) -> TaskRecord:
         """Request an evidence-grounded answer (blocked until M5)."""
-        return self._repository_task(TaskKind.ASK, source, commit, question)
+        return self._tasks.repository_task(TaskKind.ASK, source, commit, question)
 
     def fix(
         self, source: str | Path, issue: str, *, commit: str | None = None
     ) -> TaskRecord:
         """Request a validated repair (blocked until M7)."""
-        return self._repository_task(TaskKind.FIX, source, commit, issue)
+        return self._tasks.repository_task(TaskKind.FIX, source, commit, issue)
 
     def test(self, source: str | Path, *, commit: str | None = None) -> TaskRecord:
         """Request isolated validation (blocked until M7)."""
-        return self._repository_task(TaskKind.TEST, source, commit)
+        return self._tasks.repository_task(TaskKind.TEST, source, commit)
 
     def benchmark(self, suite: str) -> TaskRecord:
         """Request a benchmark run (blocked until M9)."""

@@ -1,10 +1,10 @@
 # RepoAgent
 
-An independent repository engineering platform. **M1 foundation, M2 repository
-analysis, M3 hybrid code retrieval, and M4 the code knowledge graph (with
-Obsidian export) are implemented.** Model calls, agents, patch generation,
-sandbox execution, and benchmarks are planned capabilities, not working
-features in this release.
+An independent repository engineering platform. M1–M4 provide static analysis,
+structure-aware retrieval, and a code knowledge graph. **M5 adds a read-only,
+LangGraph-powered Investigator with Groq and OpenAI provider adapters.**
+
+**RepoAgent M6 proposes and statically reviews patches, but never applies or executes them.**
 
 ## Setup
 
@@ -16,7 +16,8 @@ uv run repoagent --help
 uv run repoagent --version
 ```
 
-Runtime and tests need no API keys, Docker daemon, or network after installation.
+Analysis, retrieval, and automated tests run offline after installation. Live
+investigation requires a configured provider and API key; Docker is not required.
 
 ## Analyzing repositories (M2)
 
@@ -127,6 +128,104 @@ ones, and injection-safe source fences). It never deletes files and requires
 `--overwrite` to export into a non-empty directory. Obsidian itself is never
 required.
 
+## Investigator (M5)
+
+The Investigator runs a real stateful LangGraph workflow:
+
+```text
+analyze_issue → plan_search → retrieve → assess_evidence
+                                ↑           │
+                              refine ← need more evidence
+                                ↑           │ enough evidence
+                                └── weak ← hypothesize → evaluate → report
+```
+
+Conditional edges revisit retrieval when evidence is incomplete or a hypothesis
+needs confirmation. Repeated queries are suppressed. Iteration, query, evidence,
+tool-call, source-context, and model-output limits prevent runaway exploration.
+Reports identify the termination reason, including provider failures and exhausted
+budgets, instead of presenting incomplete investigations as successful.
+
+Configure a private, ignored `.env` file (never place a key in `.env.example`):
+
+```dotenv
+REPOAGENT_LLM_PROVIDER=groq
+REPOAGENT_LLM_MODEL=openai/gpt-oss-20b
+REPOAGENT_LLM_API_KEY=your-private-key
+```
+
+Groq uses its official SDK and strict structured output. Free-tier availability
+and quotas are account-dependent; a rate-limit error produces a partial
+`provider_error` report. The OpenAI adapter uses its official SDK; select
+`REPOAGENT_LLM_PROVIDER=openai` and a compatible `REPOAGENT_LLM_MODEL` explicitly.
+There is no production fake-model fallback.
+
+```sh
+uv run repoagent --data-dir /tmp/repoagent-data index ./tests/fixtures/auth_bug
+uv run repoagent --env-file .env --data-dir /tmp/repoagent-data investigate \
+  ./tests/fixtures/auth_bug "Users with uppercase emails cannot log in"
+uv run repoagent --env-file .env --data-dir /tmp/repoagent-data investigate \
+  ./tests/fixtures/auth_bug "Users with uppercase emails cannot log in" \
+  --max-iterations 3 --top-k 5 --json
+```
+
+Only explicitly selected dotenv files are loaded. Keep the application data
+folder outside the investigated repository. Index first, and re-index when the
+repository changes: investigation reads stored source, not live files.
+
+The automatic tool is `search_code`, through `SearchService` using `hybrid_graph`
+(with hybrid fallback for indexes without a graph). The toolkit also supports
+bounded `inspect_symbol`, `inspect_neighbors`, and `inspect_file` over the same
+indexed data; these inspection helpers are not currently selected by graph nodes.
+No agent tools execute commands, edit files, apply patches, run tests, or browse.
+
+Evidence keeps repository/chunk identity, exact file/symbol/line provenance,
+source snippets, retrieval source, and graph paths. Relevance is assessed before
+hypotheses may cite it. Unknown citations and unsupported affected symbols cannot
+become accepted hypotheses. Evaluation challenges alternatives and contradictions;
+confidence is bounded and **uncalibrated**, not proof of correctness.
+
+Issue text, source, and prior model output enter prompts as untrusted JSON data,
+separate from system instructions. Schema validation and tool restrictions enforce
+the boundary; prompt instructions cannot guarantee immunity to semantic deception.
+
+JSON reports include typed issue analysis, executed queries, assessed evidence,
+hypotheses, confidence, graph paths, usage, termination, and observable trace.
+Reports persist at `<data-dir>/investigations/<UUID>.json`; traces contain actions
+and concise decisions, never hidden chain-of-thought. They are separate from M1
+SQLite task records, so `tasks show` does not load investigation artifacts yet.
+Logs go to stderr. Provider errors exit 1; invalid input exits 2. Honest reports
+ending on insufficient evidence or limits exit 0 and carry the termination reason.
+
+To add an investigation to an Obsidian vault, first export its M4 graph notes,
+then add `--export-obsidian /path/to/vault` to `investigate`. It writes one note
+under `Investigations/`, linking the referenced symbols; it does not require
+Obsidian. Export destinations inside the source repository are rejected.
+
+The SDK exposes `client.investigate(path, Issue(...) or text, provider=...)`,
+returning `InvestigationReport`. Provider injection supports offline testing
+without subclassing the client. See [M5 architecture](docs/m5-investigation.md).
+
+### Investigation evaluation
+
+```sh
+uv run python scripts/benchmark_investigation.py \
+  tests/fixtures/investigation_cases.json --env-file .env \
+  --data-dir /tmp/repoagent-benchmark
+```
+
+Two controlled repositories cover email normalization and an inventory boundary.
+Labels remain in the evaluator. Metrics measure file/symbol recall over the final
+relevant evidence set, exact primary-citation localization, iterations, and
+retrieval calls. They are not Recall@K across multiple search rounds. Automated
+fixture-provider scores test plumbing; only live-provider runs assess model behavior.
+
+Limitations: the existing hashing embeddings and keyword reranker are lexical
+approximations, static calls may remain ambiguous, indexes can become stale,
+source snippets are truncated, and there is no execution evidence or confidence
+calibration. M5 runs synchronously and persists final traces; it does not offer
+crash-resumable LangGraph checkpoints or a background task API.
+
 ## Unavailable workflows (task records)
 
 ```sh
@@ -157,7 +256,7 @@ response = client.search(
 for hit in response.results:
     print(hit.rank, hit.chunk.file_path, hit.chunk.qualified_name, hit.evidence)
 
-graph = client.graph("./some-python-project")
+graph = client.retrieval().graph("./some-python-project")
 print(len(graph.nodes), len(graph.edges))
 ```
 
@@ -201,7 +300,36 @@ and `export/` (M4), `cli/`). See
 [architecture](docs/architecture.md) for boundaries and the pipelines;
 see [milestones](docs/milestones.md) for the roadmap.
 
-Next: **M5 — investigation** with a budgeted context engine, a typed
-investigator over retrieved evidence, and an OpenAI-compatible provider
-adapter. Graph-enhanced retrieval strategies keep being evaluated with the
-M3/M4 framework.
+Next: **M6 — typed Developer/Reviewer agents and minimal patch generation**.
+Keep patches unvalidated until M7 provides isolated execution. M5 adds no repair tools.
+
+## Static repair proposals (M6)
+
+M6 extends the M5 Investigator with a separate LangGraph workflow:
+
+```text
+Investigator → Developer → Static Patch Validator → Reviewer
+                                      ↑              │
+                                      └── REVISE ─────┘
+```
+
+`repoagent repair` first requires a confident, evidence-backed M5 root cause. The
+Developer receives only the report's assessed evidence and source snippets, then
+returns a typed plan and unified diff. The validator checks bounded unified diffs
+in memory: safe existing paths, hunk context, text-only changes, size, and Python
+syntax. The Reviewer independently returns approve, revise, or reject. An approval
+means only **approved for M7 runtime validation**.
+
+```sh
+uv run repoagent --env-file .env --data-dir /tmp/repoagent-data index ./project
+uv run repoagent --env-file .env --data-dir /tmp/repoagent-data repair \
+  ./project "Users with uppercase email addresses cannot log in" \
+  --max-revisions 2 --json
+```
+
+The patch is never applied to the target tree and target code is never executed.
+M6 exposes no shell, write, git, browser, or test tools. Revision feedback and
+review history are stored in the returned report, with an explicit terminal status
+for rejection, insufficient investigation, provider failure, or revision limit.
+Runtime tests, patch application, Docker isolation, and runtime retry loops belong
+to M7/M8. Static validation does not prove that a patch fixes behavior.

@@ -41,6 +41,7 @@ class KeywordOverlapReranker:
                 score=candidate.score,
                 source=candidate.source,
                 chunk=candidate.chunk,
+                evidence=candidate.evidence,
             )
             for rank, (_, _, candidate) in enumerate(scored[:top_k], start=1)
         ]

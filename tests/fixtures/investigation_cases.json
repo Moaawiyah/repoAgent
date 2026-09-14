@@ -1,0 +1,20 @@
+[
+  {
+    "name": "uppercase-email-login",
+    "repository": "tests/fixtures/auth_bug",
+    "issue": "Users with uppercase email addresses cannot log in",
+    "expected_files": ["app/users/repository.py", "app/auth/service.py"],
+    "expected_symbols": ["app.users.repository.UserRepository.find_by_email", "app.auth.service.AuthService.login"],
+    "expected_root_cause_file": "app/users/repository.py",
+    "expected_root_cause_symbol": "app.users.repository.UserRepository.find_by_email"
+  },
+  {
+    "name": "exact-stock-order",
+    "repository": "tests/fixtures/inventory_bug",
+    "issue": "An order for exactly the available stock is rejected; it should reserve the stock and leave zero available.",
+    "expected_files": ["inventory.py"],
+    "expected_symbols": ["inventory.Inventory.reserve"],
+    "expected_root_cause_file": "inventory.py",
+    "expected_root_cause_symbol": "inventory.Inventory.reserve"
+  }
+]

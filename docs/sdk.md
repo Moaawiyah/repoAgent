@@ -61,3 +61,36 @@ Expose stable facade methods and keep presentation in CLI/API adapters. Inject
 model, retrieval, source and sandbox implementations when their milestones arrive.
 Do not make SDK consumers configure internal agent graphs or backend SDK objects
 for ordinary usage. Avoid empty inheritance hierarchies and giant service classes.
+
+## M5 investigation
+
+```python
+from repoagent import Issue, RepoAgent, Settings
+
+client = RepoAgent(settings=Settings(_env_file=".env"))
+client.index("./project")
+report = client.investigate(
+    "./project",
+    Issue(description="Uppercase emails cannot log in"),
+    max_iterations=3,
+    top_k=5,
+)
+print(report.termination_reason, report.primary_hypothesis)
+```
+
+`provider=` accepts the vendor-neutral `LLMProvider` protocol. The SDK composes
+`InvestigationApi` and the application service; it does not print, exit, or install
+handlers. Reports and observable traces persist outside the repository in
+`<data-dir>/investigations/`. Provider failure returns a typed partial report with
+`provider_error`; missing configuration/index raises a domain error before a run.
+`Issue`, `InvestigationReport`, `InvestigationLimits`, `EvidenceItem`,
+`RootCauseHypothesis`, `TerminationReason`, and `LLMProvider` are public imports.
+Use `client.retrieval()` for graph/evaluation/export capabilities. M5 offers no
+code modification or execution methods to the agent.
+
+## M6 repair
+
+`client.repair(source, issue, max_revisions=2, provider=...)` indexes no new
+content; callers must index first. It returns a typed `RepairReport` containing the
+M5 investigation, optional `PatchProposal`, deterministic `StaticValidation`,
+review history, and an explicit status. The SDK never writes target code or runs it.

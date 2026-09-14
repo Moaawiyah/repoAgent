@@ -42,7 +42,7 @@ class RecordingStore:
 
 
 def test_injected_store_bypasses_environment_and_default_adapter(monkeypatch):
-    from repoagent.sdk import client as module
+    from repoagent.sdk import tasks as module
 
     def forbidden(*args, **kwargs):
         raise AssertionError("Injected storage must not initialize SQLite")

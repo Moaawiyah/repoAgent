@@ -1,0 +1,4 @@
+[project]
+name = "auth-bug-fixture"
+version = "0.1.0"
+description = "Synthetic repository with an email-login bug for M5 tests"

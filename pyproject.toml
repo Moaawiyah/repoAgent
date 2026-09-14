@@ -1,10 +1,17 @@
 [project]
 name = "repoagent"
 version = "0.1.0"
-description = "Repository-independent AI engineering platform: M1 foundation"
+description = "Read-only repository investigation with LangGraph and graph-enhanced retrieval"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["pydantic>=2,<3", "pydantic-settings>=2,<3", "typer>=0.12,<1"]
+dependencies = [
+    "groq>=1.7.0",
+    "langgraph>=1.2.11,<2",
+    "openai>=3.13.0",
+    "pydantic>=2,<3",
+    "pydantic-settings>=2,<3",
+    "typer>=0.12,<1",
+]
 
 [project.scripts]
 repoagent = "repoagent.cli.main:app"
@@ -24,6 +31,7 @@ extend-exclude = ["tests/fixtures"]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 testpaths = ["tests"]
 norecursedirs = ["tests/fixtures", ".*", "build", "dist", "node_modules", "venv"]
 addopts = "--cov=repoagent --cov=scripts --cov-report=term-missing --cov-report=json:coverage.json"
@@ -37,6 +45,8 @@ packages = [
     "repoagent",
     "repoagent.adapters",
     "repoagent.adapters.sqlite",
+    "repoagent.agent",
+    "repoagent.ai",
     "repoagent.analysis",
     "repoagent.application",
     "repoagent.cli",
@@ -47,6 +57,7 @@ packages = [
     "repoagent.ports",
     "repoagent.retrieval",
     "repoagent.sdk",
+    "repoagent.tools",
 ]
 package-dir = {repoagent = "src"}
 

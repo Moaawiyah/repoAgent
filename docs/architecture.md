@@ -287,3 +287,14 @@ Implementation directories (`sdk`, `application`, `domain`, `ports`, `adapters`,
 entry point remain `repoagent`. Add new subpackages to the explicit package list
 when creating them. The package includes `py.typed`; `build/` and distribution
 output are ignored.
+
+## M5 implemented investigation
+
+The SDK now composes a LangGraph Investigator with existing hybrid/graph search,
+provider-neutral structured outputs, official Groq/OpenAI adapters, and a bounded
+read-only toolkit. Conditional edges support evidence refinement and hypothesis
+challenge loops. Domain models remain independent of LangGraph and vendor SDKs.
+Final reports and observable traces persist as JSON artifacts outside the target
+repository; the M1 SQLite lifecycle remains separate. See
+[M5 architecture](m5-investigation.md) for state, nodes, contracts, budgets,
+security boundaries, validation, and inherited limitations. Repair remains M6.

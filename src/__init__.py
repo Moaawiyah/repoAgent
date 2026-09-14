@@ -1,5 +1,6 @@
 """RepoAgent public Python SDK and typed contracts."""
 
+from repoagent.ai.provider import LLMProvider
 from repoagent.analysis.models import (
     CodeSymbol,
     ImportInfo,
@@ -20,6 +21,20 @@ from repoagent.domain.errors import (
     StorageError,
     TaskNotFound,
     UnsupportedSchema,
+)
+from repoagent.domain.evidence import EvidenceItem
+from repoagent.domain.investigation import (
+    InvestigationLimits,
+    InvestigationReport,
+    Issue,
+    RootCauseHypothesis,
+    TerminationReason,
+)
+from repoagent.domain.repair import (
+    PatchProposal,
+    PatchReview,
+    RepairReport,
+    RepairStatus,
 )
 from repoagent.domain.repository import RepositorySpec
 from repoagent.domain.tasks import (
@@ -52,7 +67,18 @@ from repoagent.sdk import RepoAgent
 __version__ = "0.1.0"
 
 __all__ = [
+    "Issue",
+    "InvestigationReport",
+    "InvestigationLimits",
+    "RootCauseHypothesis",
+    "TerminationReason",
+    "EvidenceItem",
+    "LLMProvider",
     "CodeChunk",
+    "PatchProposal",
+    "PatchReview",
+    "RepairReport",
+    "RepairStatus",
     "CodeSymbol",
     "EdgeType",
     "EmbeddingProviderError",

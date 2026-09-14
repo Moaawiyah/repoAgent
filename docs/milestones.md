@@ -1,6 +1,6 @@
 # Milestone implementation roadmap
 
-M1–M4 are implemented. Complete and validate each milestone before
+M1–M5 are implemented, with delivered limitations recorded below. Complete and validate each milestone before
 advancing. All development gates: passing pytest, Ruff lint/format, >85%
 statement coverage, and <=150 physical lines per Python file. Use meaningful
 unit/integration tests.
@@ -96,6 +96,21 @@ across types; the graph is rebuilt in memory from the snapshot per search;
 no persistent graph database, no cross-repository identity, no reference
 graph (attribute reads) and no Git-history edges yet.
 
-Next: **M5 — investigation** with a budgeted context engine over retrieved
-evidence, a typed investigator, and an OpenAI-compatible provider adapter
-behind a vendor-independent protocol. Keep target execution deferred to M7.
+## M5 delivered
+
+LangGraph investigation has eight nodes, evidence/refinement and hypothesis
+challenge loops, typed state and outputs, bounded tools, SDK/CLI entry points,
+Groq/OpenAI official SDK adapters, durable reports, Obsidian notes, and controlled
+investigation evaluation. See [M5 architecture](m5-investigation.md) and the
+[README](../README.md) for configuration and limitations. Investigation consumes
+existing local indexes and never executes or modifies source.
+
+Next: **M6 — Developer/Reviewer outputs and minimal patch artifacts**. No repair
+capability is included in M5; sandbox validation belongs to M7.
+
+## M6 delivered
+
+M6 adds a read-only Developer → static validator → Reviewer LangGraph. It consumes
+M5 evidence, generates bounded unified diffs, validates them only in memory, and
+preserves reviewer decisions through bounded revisions. `repair` outputs unapplied,
+unexecuted proposals; M7 must supply sandboxed runtime validation.

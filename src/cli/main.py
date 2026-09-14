@@ -9,6 +9,8 @@ import typer
 from repoagent import __version__
 from repoagent.cli.commands import Json, register
 from repoagent.cli.graph_cli import register_graph
+from repoagent.cli.investigate_cli import register_investigate
+from repoagent.cli.repair_cli import register_repair
 from repoagent.cli.retrieval_cli import register_retrieval
 from repoagent.cli.runtime import client, errors, output
 
@@ -57,3 +59,5 @@ def events(ctx: typer.Context, task_id: UUID, json: Json = False) -> None:
 register(app)
 register_retrieval(app)
 register_graph(app)
+register_investigate(app)
+register_repair(app)

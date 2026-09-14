@@ -39,3 +39,15 @@ class EmbeddingProviderError(RetrievalError):
 
 class ExportError(RepoAgentError):
     """A graph export could not be written safely."""
+
+
+class LLMError(RepoAgentError):
+    """A language-model provider is unavailable or misconfigured."""
+
+
+class LLMOutputError(LLMError):
+    """A provider returned output that failed structured validation."""
+
+
+class InvestigationError(RepoAgentError):
+    """An investigation could not be started or executed."""
