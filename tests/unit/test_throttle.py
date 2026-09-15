@@ -1,4 +1,4 @@
-"""Proactive sliding-window limiter and its Groq provider integration."""
+"""Proactive sliding-window limiter and its provider integrations."""
 
 from types import SimpleNamespace
 
@@ -23,6 +23,33 @@ class FakeClock:
 def limiter(tpm=None, rpm=None):
     clock = FakeClock()
     return SlidingWindowLimiter(tpm, rpm, clock=clock, sleep=clock.sleep), clock
+
+
+def fake_sdk_client(created: list):
+    """Records ``create`` calls and reports usage, standing in for any
+    vendor SDK's chat-completions client (Groq, OpenAI, OpenAI-compatible)."""
+
+    class Client:
+        def __init__(self, **kwargs):
+            self.chat = SimpleNamespace(completions=self)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def create(self, **kwargs):
+            created.append(kwargs)
+            usage = SimpleNamespace(
+                prompt_tokens=40, completion_tokens=10, total_tokens=50
+            )
+            message = SimpleNamespace(content="{}")
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=message)], usage=usage
+            )
+
+    return Client
 
 
 def test_token_budget_waits_for_oldest_reservation_to_expire():
@@ -65,28 +92,7 @@ def test_groq_provider_reserves_and_settles(monkeypatch):
     import groq
 
     created = []
-
-    class Client:
-        def __init__(self, **kwargs):
-            self.chat = SimpleNamespace(completions=self)
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            return False
-
-        def create(self, **kwargs):
-            created.append(kwargs)
-            usage = SimpleNamespace(
-                prompt_tokens=40, completion_tokens=10, total_tokens=50
-            )
-            message = SimpleNamespace(content="{}")
-            return SimpleNamespace(
-                choices=[SimpleNamespace(message=message)], usage=usage
-            )
-
-    monkeypatch.setattr(groq, "Groq", Client)
+    monkeypatch.setattr(groq, "Groq", fake_sdk_client(created))
     settings = Settings(
         llm_provider="groq",
         llm_api_key="x",
@@ -103,3 +109,31 @@ def test_groq_provider_reserves_and_settles(monkeypatch):
     )
     llm_provider_from_settings(unthrottled).complete(request)
     assert len(created) == 2
+
+
+def test_openai_compatible_provider_reserves_and_settles_per_base_url(monkeypatch):
+    """Covers OpenAI-compatible endpoints selected via llm_base_url (e.g. z.ai)."""
+    import openai
+
+    created = []
+    monkeypatch.setattr(openai, "OpenAI", fake_sdk_client(created))
+    settings = Settings(
+        llm_provider="openai",
+        llm_api_key="x",
+        llm_model="glm-4.7-flashx",
+        llm_base_url="https://api.z.ai/api/paas/v4/",
+        llm_tokens_per_minute=8000,
+        llm_requests_per_minute=30,
+    )
+    request = CompletionRequest(prompt_name="p", system="s", user="u" * 300)
+    llm_provider_from_settings(settings).complete(request)
+    key = "openai:https://api.z.ai/api/paas/v4/:glm-4.7-flashx"
+    shared = shared_limiter(key, 8000, 30)
+    assert created and [e.tokens for e in shared._events] == [50]
+    other_host = settings.model_copy(
+        update={"llm_base_url": "https://api.openai.com/v1"}
+    )
+    llm_provider_from_settings(other_host).complete(request)
+    assert shared is not shared_limiter(
+        "openai:https://api.openai.com/v1:glm-4.7-flashx", 8000, 30
+    )

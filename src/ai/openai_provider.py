@@ -3,17 +3,26 @@
 from repoagent.ai.chat import arguments, completion
 from repoagent.ai.provider import CompletionRequest, CompletionResult, LLMProvider
 from repoagent.ai.rate_limit import RateLimitRetry
+from repoagent.ai.throttle import shared_limiter, throttled_call
 from repoagent.config import Settings
 from repoagent.domain.errors import LLMError
 
 
 class OpenAIChatProvider:
+    """Also serves any OpenAI-compatible endpoint selected via ``llm_base_url``
+    (e.g. z.ai); the vendor name in errors/usage always reads ``openai``."""
+
     name = "openai"
 
     def __init__(self, settings: Settings) -> None:
         if not settings.llm_api_key:
             raise LLMError("OpenAI provider requires REPOAGENT_LLM_API_KEY")
         self._settings = settings
+        self._limiter = shared_limiter(
+            f"openai:{settings.llm_base_url or 'api.openai.com'}:{settings.llm_model}",
+            settings.llm_tokens_per_minute,
+            settings.llm_requests_per_minute,
+        )
 
     def complete(self, request: CompletionRequest) -> CompletionResult:
         from openai import APIError, OpenAI, RateLimitError
@@ -27,12 +36,20 @@ class OpenAIChatProvider:
                 max_retries=0,
             ) as client:
                 payload = arguments(
-                    request, settings.llm_model, settings.llm_max_output_tokens
+                    request,
+                    settings.llm_model,
+                    settings.llm_max_output_tokens,
+                    settings.llm_structured_output,
                 )
                 response = RateLimitRetry(
                     settings.llm_rate_limit_retries, settings.llm_rate_limit_max_wait
                 ).call(
-                    lambda: client.chat.completions.create(**payload), RateLimitError
+                    lambda: throttled_call(
+                        self._limiter,
+                        lambda: client.chat.completions.create(**payload),
+                        payload,
+                    ),
+                    RateLimitError,
                 )
         except RateLimitError:
             raise LLMError(

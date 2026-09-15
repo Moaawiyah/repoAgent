@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     llm_rate_limit_max_wait: int = Field(default=60, ge=1, le=300)
     llm_tokens_per_minute: int | None = Field(default=None, ge=100, le=10_000_000)
     llm_requests_per_minute: int | None = Field(default=None, ge=1, le=100_000)
+    llm_structured_output: Literal["response_format", "tool_call"] = "response_format"
     repair_max_revisions: int = Field(default=2, ge=0, le=5)
     repair_max_attempts: int = Field(default=3, ge=1, le=10)
     repair_max_reinvestigations: int = Field(default=1, ge=0, le=3)

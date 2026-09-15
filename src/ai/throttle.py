@@ -70,6 +70,25 @@ _REGISTRY: dict[tuple, SlidingWindowLimiter] = {}
 _REGISTRY_LOCK = threading.Lock()
 
 
+def throttled_call(limiter: "SlidingWindowLimiter | None", create, payload: dict):
+    """Reserve estimated budget, call the vendor SDK, settle to actual usage.
+
+    Shared by every OpenAI-compatible chat-completion adapter (Groq, OpenAI,
+    and OpenAI-compatible endpoints such as z.ai) so throttling logic exists
+    in exactly one place.
+    """
+    if limiter is None:
+        return create()
+    chars = sum(len(m["content"]) for m in payload["messages"])
+    reservation = limiter.acquire(
+        estimate_tokens(chars, payload["max_completion_tokens"])
+    )
+    response = create()
+    usage = getattr(response, "usage", None)
+    limiter.settle(reservation, getattr(usage, "total_tokens", 0) or 0)
+    return response
+
+
 def shared_limiter(
     key: str, tokens_per_minute: int | None, requests_per_minute: int | None
 ) -> SlidingWindowLimiter | None:

@@ -3,7 +3,7 @@
 from repoagent.ai.chat import arguments, completion
 from repoagent.ai.provider import CompletionRequest, CompletionResult
 from repoagent.ai.rate_limit import RateLimitRetry
-from repoagent.ai.throttle import estimate_tokens, shared_limiter
+from repoagent.ai.throttle import shared_limiter, throttled_call
 from repoagent.config import Settings
 from repoagent.domain.errors import LLMError, LLMOutputError
 
@@ -21,19 +21,6 @@ class GroqProvider:
             settings.llm_requests_per_minute,
         )
 
-    def _throttled(self, client, payload: dict):
-        """Wait for budget, call, then record the provider-reported usage."""
-        if self._limiter is None:
-            return client.chat.completions.create(**payload)
-        chars = sum(len(m["content"]) for m in payload["messages"])
-        reservation = self._limiter.acquire(
-            estimate_tokens(chars, payload["max_completion_tokens"])
-        )
-        response = client.chat.completions.create(**payload)
-        usage = getattr(response, "usage", None)
-        self._limiter.settle(reservation, getattr(usage, "total_tokens", 0) or 0)
-        return response
-
     def complete(self, request: CompletionRequest) -> CompletionResult:
         from groq import APIError, APIStatusError, Groq, RateLimitError
 
@@ -45,11 +32,21 @@ class GroqProvider:
                 max_retries=0,
             ) as client:
                 payload = arguments(
-                    request, settings.llm_model, settings.llm_max_output_tokens
+                    request,
+                    settings.llm_model,
+                    settings.llm_max_output_tokens,
+                    settings.llm_structured_output,
                 )
                 response = RateLimitRetry(
                     settings.llm_rate_limit_retries, settings.llm_rate_limit_max_wait
-                ).call(lambda: self._throttled(client, payload), RateLimitError)
+                ).call(
+                    lambda: throttled_call(
+                        self._limiter,
+                        lambda: client.chat.completions.create(**payload),
+                        payload,
+                    ),
+                    RateLimitError,
+                )
         except RateLimitError:
             raise LLMError(
                 "Groq rate limit or quota not recovered within the retry budget"

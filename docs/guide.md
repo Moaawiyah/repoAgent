@@ -164,9 +164,23 @@ REPOAGENT_LLM_API_KEY=your-private-key
 
 Groq uses its official SDK and strict structured output. Free-tier availability
 and quotas are account-dependent; a rate-limit error produces a partial
-`provider_error` report. The OpenAI adapter uses its official SDK; select
-`REPOAGENT_LLM_PROVIDER=openai` and a compatible `REPOAGENT_LLM_MODEL` explicitly.
-There is no production fake-model fallback.
+`provider_error` report. The OpenAI adapter uses its official OpenAI SDK and
+also serves any OpenAI-compatible chat-completions endpoint by pairing
+`REPOAGENT_LLM_PROVIDER=openai` with `REPOAGENT_LLM_BASE_URL` and a model that
+endpoint serves — for example z.ai:
+
+```dotenv
+REPOAGENT_LLM_PROVIDER=openai
+REPOAGENT_LLM_MODEL=glm-4.7-flashx
+REPOAGENT_LLM_BASE_URL=https://api.z.ai/api/paas/v4/
+REPOAGENT_LLM_API_KEY=your-private-key
+```
+
+There is no production fake-model fallback. Both adapters proactively throttle
+requests to `REPOAGENT_LLM_TOKENS_PER_MINUTE`/`REPOAGENT_LLM_REQUESTS_PER_MINUTE`
+when set, retry HTTP 429s within `REPOAGENT_LLM_RATE_LIMIT_RETRIES` (honoring
+`retry-after`), and fail fast rather than sleep through a multi-minute quota
+reset; each OpenAI-compatible base URL gets its own rate-limit budget.
 
 ```sh
 uv run repoagent --data-dir /tmp/repoagent-data index ./tests/fixtures/auth_bug

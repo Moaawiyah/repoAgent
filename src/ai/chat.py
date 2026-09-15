@@ -24,29 +24,65 @@ def strict_schema(schema: dict) -> dict:
     return result
 
 
-def arguments(request: CompletionRequest, model: str, tokens: int) -> dict:
-    return {
+def arguments(
+    request: CompletionRequest,
+    model: str,
+    tokens: int,
+    mode: str = "response_format",
+) -> dict:
+    """Build chat-completion arguments; ``mode`` selects how the schema is
+    enforced.
+
+    ``response_format`` (default) uses OpenAI/Groq-style constrained JSON
+    output. ``tool_call`` instead forces a single function call whose
+    arguments must match the schema; some OpenAI-compatible serving stacks
+    (e.g. certain GLM deployments) apply real grammar-constrained decoding to
+    tool-call arguments while treating ``response_format`` as a soft hint.
+    """
+    payload = {
         "model": model,
         "max_completion_tokens": tokens,
         "messages": [
             {"role": "system", "content": request.system},
             {"role": "user", "content": request.user},
         ],
-        "response_format": {
+    }
+    schema = strict_schema(request.output_schema)
+    if mode == "tool_call":
+        payload["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": request.prompt_name,
+                    "strict": True,
+                    "parameters": schema,
+                },
+            }
+        ]
+        payload["tool_choice"] = {
+            "type": "function",
+            "function": {"name": request.prompt_name},
+        }
+    else:
+        payload["response_format"] = {
             "type": "json_schema",
             "json_schema": {
                 "name": request.prompt_name,
                 "strict": True,
-                "schema": strict_schema(request.output_schema),
+                "schema": schema,
             },
-        },
-    }
+        }
+    return payload
 
 
 def completion(response: object, model: str) -> CompletionResult:
+    """Read the model's answer from either a tool call or message content."""
     usage = getattr(response, "usage", None)
+    message = response.choices[0].message
+    calls = getattr(message, "tool_calls", None) or []
+    text = calls[0].function.arguments if calls else (message.content or "")
     return CompletionResult(
-        text=response.choices[0].message.content or "",
+        text=text,
         model=model,
         usage=CompletionUsage(
             input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
