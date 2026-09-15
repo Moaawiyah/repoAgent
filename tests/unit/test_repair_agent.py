@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from repoagent import RepoAgent, Settings
+from repoagent.ai.provider import CompletionResult
 from repoagent.domain.repair import RepairStatus
 from tests.support.repair_provider import DIFF, RepairProvider
 
@@ -61,3 +62,20 @@ def test_repair_does_not_change_target(tmp_path):
     report = repair(tmp_path, RepairProvider())
     assert report.validation.valid and target.read_bytes() == before
     assert DIFF == report.proposal.unified_diff
+
+
+def test_developer_failure_short_circuits_with_its_own_message(tmp_path):
+    """Validate/review must not run after a failed Developer call and
+    overwrite its specific error with a generic downstream symptom."""
+
+    class BrokenDeveloper(RepairProvider):
+        def complete(self, request):
+            if request.prompt_name == "patch_proposal":
+                self.requests.append(request)
+                return CompletionResult(text="not json", model=self.name)
+            return super().complete(request)
+
+    report = repair(tmp_path, BrokenDeveloper())
+    assert report.status == RepairStatus.PROVIDER_ERROR
+    assert report.error == "Developer output failed validation"
+    assert report.proposal is None and report.validation is None and not report.reviews

@@ -1,11 +1,15 @@
 """Validate and apply a constrained unified diff only in memory."""
 
+import re
 from pathlib import Path, PurePosixPath
 
 from repoagent.analysis.python_ast import parse_untrusted
 from repoagent.domain.repair import StaticValidation
 
 MAX_FILES, MAX_CHANGED_LINES = 10, 400
+# `git diff` (and most LLM-produced diffs) append the enclosing function or
+# class name after the closing "@@"; only the numeric ranges are required.
+_HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@")
 
 
 class StaticPatchValidator:
@@ -68,7 +72,7 @@ class StaticPatchValidator:
                     raise ValueError("Patch requires b/ target paths")
                 current = raw[2:]
                 changes.setdefault(current, [])
-            elif line.startswith("@@ ") and line.endswith(" @@"):
+            elif _HUNK_HEADER.match(line):
                 if current is None:
                     raise ValueError("Hunk has no target file")
                 hunk = []

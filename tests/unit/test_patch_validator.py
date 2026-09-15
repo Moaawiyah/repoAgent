@@ -58,3 +58,16 @@ def test_auth_fixture_patch_is_valid_and_unchanged():
     before = target.read_bytes()
     assert StaticPatchValidator(root).validate(DIFF).valid
     assert target.read_bytes() == before
+
+
+def test_hunk_header_with_trailing_function_context_is_accepted(repository):
+    """``git diff`` (and most LLM-produced diffs) append the enclosing
+    function/class name after the closing "@@"; only the numeric ranges
+    are required, so a real-world diff must not be rejected over this."""
+    diff = (
+        "--- a/main.py\n+++ b/main.py\n"
+        "@@ -1,2 +1,2 @@ def value():\n"
+        " def value():\n-    return 1\n+    return 2\n"
+    )
+    result = StaticPatchValidator(repository).validate(diff)
+    assert result.valid and result.changed_lines == 2

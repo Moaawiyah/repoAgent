@@ -64,6 +64,16 @@ class RepairAgent:
             return {"error": "Reviewer output failed validation"}
         return {"reviews": [*state.reviews, review], "feedback": review.rationale}
 
+    @staticmethod
+    def _after_error(next_node: str):
+        """Stop at the first failure instead of letting downstream nodes
+        overwrite it with a less specific, unconditional-edge symptom."""
+
+        def route(state: RepairState) -> str:
+            return "report" if state.error else next_node
+
+        return route
+
     def _route(self, state: RepairState) -> str:
         if state.error:
             return "report"
@@ -84,8 +94,16 @@ class RepairAgent:
         graph.add_node("revision", self._revision)
         graph.add_node("report", build_repair_report)
         graph.add_edge(START, "develop")
-        graph.add_edge("develop", "validate")
-        graph.add_edge("validate", "review")
+        graph.add_conditional_edges(
+            "develop",
+            self._after_error("validate"),
+            {"validate": "validate", "report": "report"},
+        )
+        graph.add_conditional_edges(
+            "validate",
+            self._after_error("review"),
+            {"review": "review", "report": "report"},
+        )
         graph.add_conditional_edges(
             "review", self._route, {"develop": "revision", "report": "report"}
         )
