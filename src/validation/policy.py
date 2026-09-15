@@ -56,6 +56,15 @@ def normalize_requirement(raw: str) -> str:
     return text
 
 
+_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
+
+
+def requirement_name(spec: str) -> str:
+    """Case-folded package name from an already-normalized specifier."""
+    match = _NAME.match(spec)
+    return match.group(0).lower() if match else spec.lower()
+
+
 class CommandPolicy:
     """Maps allowlisted command kinds to constant argv vectors."""
 

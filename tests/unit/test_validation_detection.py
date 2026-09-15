@@ -74,3 +74,49 @@ def test_symlinked_or_oversized_config_is_ignored(tmp_path):
     repo.mkdir()
     (repo / "pyproject.toml").symlink_to(secret)
     assert not detect(repo).commands
+
+
+def test_setup_cfg_install_requires_and_metadata_requires_dist_alias(tmp_path):
+    """setup.cfg has two conventions for runtime deps: the standard
+    ``[options] install_requires`` and a ``[metadata] requires-dist`` alias
+    some real projects (e.g. requests) use instead."""
+    (tmp_path / "setup.cfg").write_text(
+        "[tool:pytest]\ntestpaths = tests\n"
+        "[options]\ninstall_requires =\n    packagea>=1\n    packageb<2\n"
+    )
+    plan = detect(tmp_path)
+    assert "packagea>=1" in plan.requirements and "packageb<2" in plan.requirements
+
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "setup.cfg").write_text(
+        "[tool:pytest]\ntestpaths = tests\n"
+        "[metadata]\nrequires-dist =\n    certifi>=2017.4.17\n    idna>=2.5,<4\n"
+    )
+    plan = detect(other)
+    assert (
+        "certifi>=2017.4.17" in plan.requirements
+        and "idna>=2.5,<4" in plan.requirements
+    )
+
+
+def test_projects_own_tool_pin_overrides_the_default_and_avoids_conflicts(tmp_path):
+    """A project's own pytest constraint wins over RepoAgent's default so
+    pip is never asked to satisfy two contradictory pytest ranges at once
+    (observed on requests v2.31.0: its own <=6.2.5 vs. our default >=8)."""
+    (tmp_path / "setup.cfg").write_text("[tool:pytest]\ntestpaths = tests\n")
+    (tmp_path / "requirements-dev.txt").write_text(
+        "pytest>=2.8.0,<=6.2.5\nruff==0.5.0\n"
+    )
+    plan = detect(tmp_path)
+    assert plan.requirements.count("pytest>=2.8.0,<=6.2.5") == 1
+    assert not any(spec.startswith("pytest>=8") for spec in plan.requirements)
+    assert (
+        "ruff==0.5.0" in plan.requirements and "ruff>=0.9,<1" not in plan.requirements
+    )
+
+
+def test_no_conflicting_project_pin_still_uses_the_default(tmp_path):
+    (tmp_path / "setup.cfg").write_text("[tool:pytest]\ntestpaths = tests\n")
+    (tmp_path / "requirements.txt").write_text("attrs==23.1\n")
+    assert "pytest>=8,<9" in detect(tmp_path).requirements
