@@ -29,12 +29,14 @@ class InvestigationApi:
         max_iterations: int | None = None,
         top_k: int = 5,
         provider: LLMProvider | None = None,
+        use_graph: bool = True,
     ) -> InvestigationReport:
         request = InvestigateRequest(
             repository=str(source),
             issue=issue,
             max_iterations=max_iterations,
             top_k=top_k,
+            use_graph=use_graph,
         )
         settings = self._settings or Settings()
         store, embedding = self._retrieval._services()

@@ -2,8 +2,10 @@
 
 from repoagent.ai.chat import arguments, completion
 from repoagent.ai.provider import CompletionRequest, CompletionResult
+from repoagent.ai.rate_limit import RateLimitRetry
+from repoagent.ai.throttle import estimate_tokens, shared_limiter
 from repoagent.config import Settings
-from repoagent.domain.errors import LLMError
+from repoagent.domain.errors import LLMError, LLMOutputError
 
 
 class GroqProvider:
@@ -13,9 +15,27 @@ class GroqProvider:
         if not settings.llm_api_key:
             raise LLMError("Groq requires REPOAGENT_LLM_API_KEY")
         self._settings = settings
+        self._limiter = shared_limiter(
+            f"groq:{settings.llm_model}",
+            settings.llm_tokens_per_minute,
+            settings.llm_requests_per_minute,
+        )
+
+    def _throttled(self, client, payload: dict):
+        """Wait for budget, call, then record the provider-reported usage."""
+        if self._limiter is None:
+            return client.chat.completions.create(**payload)
+        chars = sum(len(m["content"]) for m in payload["messages"])
+        reservation = self._limiter.acquire(
+            estimate_tokens(chars, payload["max_completion_tokens"])
+        )
+        response = client.chat.completions.create(**payload)
+        usage = getattr(response, "usage", None)
+        self._limiter.settle(reservation, getattr(usage, "total_tokens", 0) or 0)
+        return response
 
     def complete(self, request: CompletionRequest) -> CompletionResult:
-        from groq import APIError, Groq
+        from groq import APIError, APIStatusError, Groq, RateLimitError
 
         settings = self._settings
         try:
@@ -24,13 +44,33 @@ class GroqProvider:
                 timeout=settings.llm_timeout,
                 max_retries=0,
             ) as client:
-                response = client.chat.completions.create(
-                    **arguments(
-                        request, settings.llm_model, settings.llm_max_output_tokens
-                    )
+                payload = arguments(
+                    request, settings.llm_model, settings.llm_max_output_tokens
                 )
+                response = RateLimitRetry(
+                    settings.llm_rate_limit_retries, settings.llm_rate_limit_max_wait
+                ).call(lambda: self._throttled(client, payload), RateLimitError)
+        except RateLimitError:
+            raise LLMError(
+                "Groq rate limit or quota not recovered within the retry budget"
+            ) from None
+        except APIStatusError as error:
+            if _schema_rejected(error):
+                raise LLMOutputError(
+                    "Groq rejected model output that violated the JSON schema"
+                ) from None
+            raise LLMError(
+                "Groq request failed; check configuration and free-tier rate limits"
+            ) from None
         except APIError:
             raise LLMError(
                 "Groq request failed; check configuration and free-tier rate limits"
             ) from None
         return completion(response, settings.llm_model)
+
+
+def _schema_rejected(error: Exception) -> bool:
+    """Groq returns 400 ``json_validate_failed`` for schema-violating output."""
+    body = getattr(error, "body", None)
+    detail = body.get("error", {}) if isinstance(body, dict) else {}
+    return isinstance(detail, dict) and detail.get("code") == "json_validate_failed"

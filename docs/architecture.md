@@ -340,3 +340,39 @@ flowchart TD
   failure signatures reuse the previous analysis without an LLM call.
 - **Truthful status.** The reporter downgrades any `VALIDATED` state lacking a
   passing patched validation. Reports persist at `<data-dir>/repairs/<UUID>.json`.
+
+## M8 implemented benchmarking, API, and dashboard
+
+```mermaid
+flowchart TD
+  Suite[Suite JSON: fixtures / imported BugsInPy / SWE-bench] --> Runner[BenchmarkRunner]
+  Runner --> Mat[RepositoryMaterializer: local or pinned GitHub commit]
+  Runner --> Exec[TaskExecutor]
+  Exec --> SDK[RepoAgent SDK: evaluate / investigate / repair_and_validate]
+  Exec --> Hidden[HiddenTestEvaluator: fresh sandbox + evaluator overlay]
+  Exec --> Class[Deterministic failure classification]
+  Runner --> Store[JsonlResultStore: manifest / results.jsonl / summary]
+  UI[React dashboard] --> API[FastAPI routes]
+  API --> Policy[ApiPolicy: allowed roots, execution allowlist, token]
+  API --> Queue[JobQueue port / LocalJobQueue]
+  Queue --> SDK
+  Queue --> JobStore[JobStore port / FileJobStore]
+```
+
+- `src/benchmark/` sits outside the core agent. It calls only the public SDK
+  and never adds agent behavior. Labels, gold patches, and hidden tests are
+  used only after the agent finishes.
+- Ablations use `RepairFeatures` flags on existing components: graph retrieval
+  on or off in `InvestigateRequest`, a reviewer bypass in `RepairAgent` (static
+  validation still decides), a single investigation iteration, and one attempt
+  with no re-investigation.
+- `CountingProvider` records provider-reported tokens, prompt characters, and
+  calls per stage; repair metrics include them. Prompt contexts send focused,
+  deduplicated evidence without internal identifiers.
+- `SandboxSession.run(..., overlay=...)` lets evaluators add hidden test files
+  inside the disposable copy. Agents never supply overlays.
+- The API is a thin transport. Long operations are submitted as jobs with
+  observable progress events, and results are stored separately. Graph
+  endpoints reuse `graph.inspection`, which is shared with the CLI.
+- Chunk IDs use the repository name, not its absolute path, so rankings and
+  tie-breaks are identical wherever a benchmark repository is checked out.

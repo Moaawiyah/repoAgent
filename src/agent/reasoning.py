@@ -18,8 +18,8 @@ class ReasoningNodes:
             drafts, usage = generate(
                 state, self._provider, "hypothesis_set", HypothesisSet
             )
-        except LLMError:
-            return failure(state, "hypothesis_created")
+        except LLMError as error:
+            return failure(state, "hypothesis_created", str(error))
         known = {e.evidence_id: e for e in state.evidence}
         hypotheses = []
         for draft in drafts.hypotheses:

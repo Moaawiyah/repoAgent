@@ -25,7 +25,7 @@ def test_independent_processes_share_task_storage(tmp_path):
             check=False,
         )
 
-    created = invoke("benchmark", "synthetic", "--json")
+    created = invoke("test", str(tmp_path), "--json")
     assert created.returncode == 3, created.stderr
     task = json.loads(created.stdout)
     fetched = invoke("tasks", "show", task["id"], "--json")

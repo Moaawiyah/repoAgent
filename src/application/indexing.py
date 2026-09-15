@@ -37,7 +37,8 @@ class IndexService:
         )
         analysis = self._analyzer.analyze(spec)
         repo_id = repository_identifier(analysis.repository_root)
-        chunks = CodeChunker(repo_id).chunk(analysis, Path(analysis.repository_root))
+        root = Path(analysis.repository_root)
+        chunks = CodeChunker(repo_id, identity_scope=root.name).chunk(analysis, root)
         graph = RepositoryGraphBuilder(chunks).build(analysis).to_snapshot()
         logging.getLogger(__name__).info(
             "Chunks generated", extra={"event": "chunks_generated"}

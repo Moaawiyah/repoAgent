@@ -11,6 +11,7 @@ from repoagent.application.validated_repair import (
     ValidatedRepairService,
 )
 from repoagent.config import Settings
+from repoagent.domain.features import RepairFeatures
 from repoagent.domain.investigation import InvestigationLimits, Issue
 from repoagent.domain.repair_execution import ValidatedRepairReport
 from repoagent.domain.sandbox import CommandKind, SandboxLimits
@@ -54,6 +55,7 @@ class ValidatedRepairApi:
         max_revisions: int | None = None,
         timeout: int | None = None,
         provider: LLMProvider | None = None,
+        features: RepairFeatures | None = None,
     ) -> ValidatedRepairReport:
         settings = self._settings
         request = ValidatedRepairRequest(
@@ -69,6 +71,7 @@ class ValidatedRepairApi:
                 max_reinvestigations=settings.repair_max_reinvestigations,
             ),
             sandbox=sandbox_limits(settings, timeout),
+            features=features or RepairFeatures(),
         )
         runner = self._runner or DockerSandboxRunner(
             settings.sandbox_image, workspace_dir=settings.sandbox_workspace_dir

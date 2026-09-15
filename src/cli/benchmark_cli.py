@@ -1,0 +1,93 @@
+"""Benchmark CLI: run suites, show stored reports, import external datasets."""
+
+import json as jsonlib
+from pathlib import Path
+from typing import Annotated
+
+import typer
+
+from repoagent.benchmark.experiment import ABLATIONS, BenchmarkMode
+from repoagent.benchmark.loaders import BenchmarkError, resolve_suite
+from repoagent.benchmark.report import render_benchmark
+from repoagent.cli.runtime import client, errors
+
+Json = Annotated[bool, typer.Option("--json", help="Write structured JSON.")]
+
+
+def _emit(run, as_json: bool) -> None:
+    if as_json:
+        typer.echo(run.model_dump_json())
+    else:
+        typer.echo(render_benchmark(run.manifest, run.summary))
+
+
+def register_benchmark(app: typer.Typer) -> None:
+    @app.command()
+    def benchmark(
+        ctx: typer.Context,
+        suite: Annotated[str, typer.Argument(help="Suite file or ./benchmarks name.")],
+        mode: Annotated[BenchmarkMode, typer.Option()] = BenchmarkMode.RETRIEVAL,
+        task: Annotated[list[str] | None, typer.Option("--task")] = None,
+        ablation: Annotated[
+            list[str] | None,
+            typer.Option("--ablation", help=f"One of: {', '.join(ABLATIONS)}"),
+        ] = None,
+        k: Annotated[int, typer.Option("--k", min=1, max=50)] = 5,
+        max_attempts: Annotated[int, typer.Option(min=1, max=10)] = 3,
+        timeout: Annotated[int | None, typer.Option(min=1, max=3600)] = None,
+        json: Json = False,
+    ) -> None:
+        """Run a benchmark; retrieval mode is LLM-free, repair mode uses Docker."""
+        try:
+            resolve_suite(suite)
+            unknown = [name for name in ablation or [] if name not in ABLATIONS]
+            if unknown:
+                raise BenchmarkError(f"Unknown ablation(s): {', '.join(unknown)}")
+        except BenchmarkError as error:
+            typer.echo(f"Invalid input: {error}", err=True)
+            raise typer.Exit(2) from None
+        with errors():
+            api = client(ctx).benchmarks()
+            run = api.run(
+                suite,
+                mode=mode,
+                ablations=ablation,
+                task_ids=task,
+                k=k,
+                max_attempts=max_attempts,
+                timeout=timeout,
+                progress=lambda r: typer.echo(
+                    f"{r.task_id} [{r.experiment}] {r.status}", err=True
+                ),
+            )
+            _emit(run, json)
+
+    @app.command("benchmark-report")
+    def benchmark_report(ctx: typer.Context, run_id: str, json: Json = False) -> None:
+        """Summarize a stored benchmark run from its JSONL results."""
+        with errors():
+            _emit(client(ctx).benchmarks().load(run_id), json)
+
+    @app.command("benchmark-import")
+    def benchmark_import(
+        dataset: Annotated[str, typer.Argument(help="bugsinpy or swebench")],
+        source: Path,
+        output: Annotated[Path, typer.Option("--output")],
+        item: Annotated[list[str], typer.Option("--item", help="Bug or instance")],
+        name: str = "swe-bench-verified",
+        origin: str = "princeton-nlp/SWE-bench_Verified",
+    ) -> None:
+        """Convert a local dataset checkout/export into a RepoAgent suite."""
+        from repoagent.benchmark.adapters import import_bugsinpy, import_swebench
+        from repoagent.benchmark.loaders import read_records
+
+        with errors():
+            if dataset == "bugsinpy":
+                suite = import_bugsinpy(source, item)
+            elif dataset == "swebench":
+                suite = import_swebench(read_records(source), item, name, origin)
+            else:
+                raise BenchmarkError("Dataset must be bugsinpy or swebench")
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(jsonlib.dumps(suite.model_dump(mode="json"), indent=2))
+            typer.echo(f"Wrote {len(suite.tasks)} task(s) to {output}")

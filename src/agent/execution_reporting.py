@@ -1,6 +1,7 @@
 """Final M7 report and measured metrics from terminal loop state."""
 
 from repoagent.agent.execution_state import ExecutionRepairState
+from repoagent.agent.metrics_support import diff_stats, usage_fields
 from repoagent.ai.counting import CountingProvider
 from repoagent.domain.repair_execution import (
     ExecutionStatus,
@@ -39,9 +40,12 @@ class ExecutionReporter:
         ]
         proposal = state.proposal_report.proposal if state.proposal_report else None
         static = last.static_validation if last else None
+        added, removed = diff_stats(last.proposal.unified_diff if last else None)
         metrics = RepairMetrics(
             attempts=len(state.attempts),
-            llm_calls=self._provider.calls,
+            **usage_fields(self._provider),
+            lines_added=added,
+            lines_removed=removed,
             retrieval_calls=state.retrieval_calls,
             investigations=state.investigations,
             files_changed=len(static.changed_files) if static else 0,

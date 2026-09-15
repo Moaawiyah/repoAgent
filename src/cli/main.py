@@ -7,12 +7,14 @@ from uuid import UUID
 import typer
 
 from repoagent import __version__
+from repoagent.cli.benchmark_cli import register_benchmark
 from repoagent.cli.commands import Json, register
 from repoagent.cli.graph_cli import register_graph
 from repoagent.cli.investigate_cli import register_investigate
 from repoagent.cli.repair_cli import register_repair
 from repoagent.cli.retrieval_cli import register_retrieval
 from repoagent.cli.runtime import client, errors, output
+from repoagent.cli.serve_cli import register_serve
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -61,3 +63,5 @@ register_retrieval(app)
 register_graph(app)
 register_investigate(app)
 register_repair(app)
+register_benchmark(app)
+register_serve(app)

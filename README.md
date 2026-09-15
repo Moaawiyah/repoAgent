@@ -1,476 +1,334 @@
 # RepoAgent
 
-An independent repository engineering platform. M1–M4 provide static analysis,
-structure-aware retrieval, and a code knowledge graph. **M5 adds a read-only,
-LangGraph-powered Investigator with Groq and OpenAI provider adapters.**
+RepoAgent is an autonomous repository engineering agent for Python codebases.
+Given an unfamiliar repository and a bug report, it analyzes the code
+statically, retrieves evidence with hybrid and graph-enhanced RAG, and
+investigates the root cause with a LangGraph workflow. It then generates a
+minimal patch, has it reviewed, and validates the patch in an isolated Docker
+sandbox, retrying with failure analysis when validation fails. Every stage is
+measured by a reproducible benchmark harness and exposed through a CLI, a
+Python SDK, a FastAPI service, and a small React dashboard.
 
-**M6 proposes and statically reviews patches. M7 (`repair --execute`) applies an
-approved patch only to a disposable copy inside a hardened Docker sandbox, runs
-detected validation, analyzes failures, and retries within strict bounds. The
-original repository is never modified.**
+RepoAgent never modifies the repository you point it at. Patches are applied
+only to disposable copies, and target code runs only inside the sandbox.
 
-## Setup
+> **Status:** M1–M8 are implemented. Measured retrieval results and a first
+> live-model localization run are below. Docker-validated repair success with
+> a live model has **not been measured** yet (Groq daily token quota
+> exhausted); see [Benchmark results](#benchmark-results).
 
-Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/). Install dependencies:
+## Architecture
+
+```text
+                 RepoAgent (CLI · Python SDK · FastAPI · dashboard)
+                                   │
+        ┌──────────────────────────┴──────────────────────────┐
+        │                                                     │
+ Repository analysis (AST, M2)                         Issue / task
+        │                                                     │
+ Code knowledge graph (M4)                                    │
+        │                                                     │
+ BM25 + vector + RRF + graph expansion (M3/M4) ───────────────┤
+        │                                                     │
+        └──────────────────────────┬──────────────────────────┘
+                                   ▼
+                     Investigator (LangGraph, M5)
+                                   ▼
+                          Developer (M6)
+                                   ▼
+                  Static patch validator → Reviewer
+                                   ▼
+               Docker sandbox: baseline → patched validation (M7)
+                                   ▼
+                          pytest / Ruff results
+                             ↙            ↘
+                          FAIL            PASS → validated repair
+                            ↓
+          deterministic triage → Failure Analyzer → retry
+          (bounded; Investigator re-entry when the root cause is uncertain)
+                                   ▼
+             Benchmark runner · metrics · failure categories (M8)
+```
+
+Layering follows the project rules: presentation (CLI, API, dashboard) calls
+the SDK. The SDK calls application services, which depend on domain models
+and ports. Adapters implement those ports: SQLite and JSON stores,
+Groq/OpenAI providers, the Docker sandbox, and the job queue. See
+[architecture](docs/architecture.md).
+
+## Capabilities by milestone
+
+| Milestone | Implemented capability |
+| --- | --- |
+| M1 | Package, validated settings, SQLite task store, CLI, SDK facade |
+| M2 | Ignore-aware, symlink-safe discovery and Python AST analysis (symbols, imports, relationships) |
+| M3 | Structure-aware chunking, BM25, hashing embeddings, vector store, reciprocal-rank fusion, reranking, retrieval evaluation |
+| M4 | Code knowledge graph (defines, contains, imports, inherits, calls), bounded expansion, `hybrid_graph` retrieval, Obsidian export |
+| M5 | LangGraph Investigator: evidence assessment, hypotheses and challenge loop, Groq and OpenAI adapters |
+| M6 | Developer, static patch validator, and Reviewer graph producing minimal unified diffs |
+| M7 | Docker sandbox, allowlisted commands, baseline/patched pytest and Ruff, failure analysis, bounded retries |
+| M8 | Benchmark framework (fixtures, BugsInPy, SWE-bench adapters), ablation flags, metrics and failure taxonomy, token-efficiency work, FastAPI with background jobs, React dashboard |
+
+Future ideas, **not implemented**: durable distributed job queue,
+multi-language analyzers, semantic embedding models, per-instance SWE-bench
+environment images, a hosted multi-tenant service.
+
+## Installation
+
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/). Docker is required
+only for sandboxed validation. Node 22+ is needed only to build the dashboard.
 
 ```sh
 uv sync --locked
 uv run repoagent --help
-uv run repoagent --version
+cp .env.example .env   # set REPOAGENT_LLM_PROVIDER / MODEL / API_KEY for agent features
 ```
 
-Analysis, retrieval, and automated tests run offline after installation. Live
-investigation requires a configured provider and API key. Docker is required only
-for `repair --execute` (M7); nothing else executes target code.
+Analysis, indexing, search, graph inspection, and retrieval benchmarks run
+offline without an LLM.
 
-## Analyzing repositories (M2)
+Provider rate limits are handled in three layers:
+
+- Proactive throttling: set `REPOAGENT_LLM_TOKENS_PER_MINUTE` and
+  `REPOAGENT_LLM_REQUESTS_PER_MINUTE` to your plan's limits (for example
+  Groq on-demand `openai/gpt-oss-20b`: 8000 TPM).
+- Bounded HTTP 429 retries that honor `retry-after`
+  (`REPOAGENT_LLM_RATE_LIMIT_RETRIES`, `REPOAGENT_LLM_RATE_LIMIT_MAX_WAIT`).
+- Fail-fast when the provider asks for a longer wait, such as an exhausted
+  daily token quota.
+
+## CLI usage
 
 ```sh
-uv run repoagent analyze ./some-python-project
-uv run repoagent analyze ./some-python-project --json
+uv run repoagent analyze ./project
+uv run repoagent index ./project
+uv run repoagent search ./project "where are sessions refreshed" --strategy hybrid_graph
+uv run repoagent graph ./project --symbol "pkg.module.Class.method"
+uv run repoagent --env-file .env investigate ./project "Uppercase emails cannot log in"
+uv run repoagent --env-file .env repair ./project "Uppercase emails cannot log in"            # static proposal
+uv run repoagent --env-file .env repair ./project "Uppercase emails cannot log in" --execute  # Docker-validated
+uv run repoagent benchmark fixtures --mode retrieval --k 5
+uv run repoagent --env-file .env benchmark fixtures --mode repair --ablation full --ablation no_retry
+uv run repoagent benchmark-report <run_id>
+uv run repoagent serve --allow-root ./tests/fixtures --execution-repo ./tests/fixtures/auth_bug \
+  --dashboard dashboard/dist
 ```
 
-`analyze` accepts a local directory, validates it (existing, a directory,
-readable), and performs static analysis only — target code is never imported
-or executed. Extracted information:
+## Example investigation
 
-- Python modules with docstrings and line ranges.
-- Classes with base classes, decorators, docstrings, and line ranges.
-- Functions, methods, and async functions with typed parameters
-  (name, annotation, default, kind), return annotations, docstrings, and
-  line ranges.
-- Imports classified conservatively as repository-internal, standard
-  library, or external.
-- Relationships: imports, inheritance, containment, definitions.
-- Repository summary: file/module/class/function/method counts, detected
-  tests and configuration files, and per-file analysis errors.
-
-Discovery skips vendored/ignored directories, honors `.gitignore`, and never
-follows symlinks outside the repository. One malformed file is recorded as a
-per-file error and does not abort the analysis. Results are deterministic.
-
-## Indexing and searching (M3)
-
-```sh
-uv run repoagent index ./some-python-project
-uv run repoagent search ./some-python-project "Where is authentication handled?"
-uv run repoagent search ./some-python-project "authentication" --strategy bm25 --top-k 5
-uv run repoagent search ./some-python-project "authentication" --strategy vector
-uv run repoagent search ./some-python-project "authentication" --strategy hybrid --rerank
-uv run repoagent search ./some-python-project "authentication" --json
-```
-
-`index` analyzes a repository (reusing M2), splits it into structure-aware
-chunks aligned with functions, methods, classes, and module-level code, embeds
-each chunk once, and persists the index under the data directory. Chunk IDs
-are deterministic (`repository + file + qualified symbol + source hash`), so
-unchanged code keeps its identity.
-
-`search` retrieves the most relevant code with full provenance (file, symbol,
-line range, source preview) rather than dumping whole files. Strategies:
-`bm25` (Okapi BM25 with identifier-aware tokenization that splits
-snake_case/CamelCase while preserving exact identifiers), `vector` (embedding
-similarity), and `hybrid` (default; Reciprocal Rank Fusion of both, never
-mixing raw score scales). `--rerank` optionally applies a deterministic
-keyword-overlap reranker. JSON output is machine-readable; logs never mix
-into it.
-
-## Retrieval evaluation (LLM-free)
-
-```sh
-uv run repoagent evaluate ./some-python-project \
-  --cases cases.json --top-k 5
-uv run repoagent evaluate ./some-python-project \
-  --cases cases.json --strategy hybrid_graph --json
-```
-
-`evaluate` runs real searches per strategy against labeled cases (query +
-expected files/symbols) and reports Recall@K, MRR, HitRate@K, and Precision@K
-computed from actual retrieval results — nothing is hardcoded. Strategies
-compared: `bm25`, `vector`, `hybrid`, and `hybrid_graph`. See
-`tests/fixtures/rag_cases.json` for the case format.
-
-## Code knowledge graph and Obsidian export (M4)
-
-```sh
-uv run repoagent graph ./some-python-project
-uv run repoagent graph ./some-python-project \
-  --symbol "auth.service.AuthService.authenticate"
-uv run repoagent graph ./some-python-project --json
-uv run repoagent export-obsidian ./some-python-project ./repoagent-vault
-```
-
-The graph is built statically from M2 analysis — target code is never
-executed:
-
-- **Node types:** module, class, function, method. Node identity is the
-  stable qualified name; nodes link to chunk IDs for retrieval.
-- **Edge types:** DEFINES (module→symbol), CONTAINS (class→method),
-  IMPORTS (module→module, internal only), INHERITS (class→base, unresolved
-  bases kept marked rather than invented), CALLS (conservatively resolved).
-- **Call resolution** is explicit about certainty: `self.method()` resolves
-  against the caller's class; bare names resolve via the same module or a
-  unique repo-wide name; dotted calls resolve by unique qualified suffix;
-  anything else stays unresolved or partial (marked `resolved: false`) —
-  never guessed.
-- **Traversal is bounded** (max depth, max nodes, edge-type filters) and
-  cycle-safe, recording graph distance and the full relationship path.
-- `repoagent graph --symbol` shows outgoing/incoming/parent relationships;
-  `--json` emits the deterministic machine-readable graph (nodes, edges,
-  metadata) for future agents and tools.
-
-`hybrid_graph` retrieval uses the hybrid ranking as seeds, expands along the
-graph with bounded traversal, scores candidates by seed rank × distance
-decay × relationship weight, and fuses seed and graph rankings with the same
-RRF implementation — every result carries structural evidence (lexical rank,
-vector rank, graph distance, relationship path).
-
-The Obsidian exporter writes the graph as a deterministic Markdown vault
-(`Repository.md`, plus `Modules/`, `Classes/`, `Functions/`, `Methods/`
-notes with wikilinks for real relationships, inline code for unresolved
-ones, and injection-safe source fences). It never deletes files and requires
-`--overwrite` to export into a non-empty directory. Obsidian itself is never
-required.
-
-## Investigator (M5)
-
-The Investigator runs a real stateful LangGraph workflow:
+Investigation runs a bounded LangGraph loop:
+`analyze_issue → plan_search → retrieve → assess_evidence → (refine | hypothesize) → evaluate → report`.
+The report contains assessed evidence with file, symbol, and line provenance,
+graph paths, ranked hypotheses that cite evidence IDs, uncalibrated
+confidence, the termination reason, token usage, and an observable trace (no
+chain-of-thought).
 
 ```text
-analyze_issue → plan_search → retrieve → assess_evidence
-                                ↑           │
-                              refine ← need more evidence
-                                ↑           │ enough evidence
-                                └── weak ← hypothesize → evaluate → report
+Root cause:  Fixture: raw email equality lookup
+Evidence:    app/users/repository.py:12-17  app.users.repository.UserRepository.find_by_email (relevant)
+Termination: confident_root_cause
 ```
 
-Conditional edges revisit retrieval when evidence is incomplete or a hypothesis
-needs confirmation. Repeated queries are suppressed. Iteration, query, evidence,
-tool-call, source-context, and model-output limits prevent runaway exploration.
-Reports identify the termination reason, including provider failures and exhausted
-budgets, instead of presenting incomplete investigations as successful.
+This example shows the report format. The values come from the offline
+fixture provider in tests, not from a live model run.
 
-Configure a private, ignored `.env` file (never place a key in `.env.example`):
-
-```dotenv
-REPOAGENT_LLM_PROVIDER=groq
-REPOAGENT_LLM_MODEL=openai/gpt-oss-20b
-REPOAGENT_LLM_API_KEY=your-private-key
-```
-
-Groq uses its official SDK and strict structured output. Free-tier availability
-and quotas are account-dependent; a rate-limit error produces a partial
-`provider_error` report. The OpenAI adapter uses its official SDK; select
-`REPOAGENT_LLM_PROVIDER=openai` and a compatible `REPOAGENT_LLM_MODEL` explicitly.
-There is no production fake-model fallback.
-
-```sh
-uv run repoagent --data-dir /tmp/repoagent-data index ./tests/fixtures/auth_bug
-uv run repoagent --env-file .env --data-dir /tmp/repoagent-data investigate \
-  ./tests/fixtures/auth_bug "Users with uppercase emails cannot log in"
-uv run repoagent --env-file .env --data-dir /tmp/repoagent-data investigate \
-  ./tests/fixtures/auth_bug "Users with uppercase emails cannot log in" \
-  --max-iterations 3 --top-k 5 --json
-```
-
-Only explicitly selected dotenv files are loaded. Keep the application data
-folder outside the investigated repository. Index first, and re-index when the
-repository changes: investigation reads stored source, not live files.
-
-The automatic tool is `search_code`, through `SearchService` using `hybrid_graph`
-(with hybrid fallback for indexes without a graph). The toolkit also supports
-bounded `inspect_symbol`, `inspect_neighbors`, and `inspect_file` over the same
-indexed data; these inspection helpers are not currently selected by graph nodes.
-No agent tools execute commands, edit files, apply patches, run tests, or browse.
-
-Evidence keeps repository/chunk identity, exact file/symbol/line provenance,
-source snippets, retrieval source, and graph paths. Relevance is assessed before
-hypotheses may cite it. Unknown citations and unsupported affected symbols cannot
-become accepted hypotheses. Evaluation challenges alternatives and contradictions;
-confidence is bounded and **uncalibrated**, not proof of correctness.
-
-Issue text, source, and prior model output enter prompts as untrusted JSON data,
-separate from system instructions. Schema validation and tool restrictions enforce
-the boundary; prompt instructions cannot guarantee immunity to semantic deception.
-
-JSON reports include typed issue analysis, executed queries, assessed evidence,
-hypotheses, confidence, graph paths, usage, termination, and observable trace.
-Reports persist at `<data-dir>/investigations/<UUID>.json`; traces contain actions
-and concise decisions, never hidden chain-of-thought. They are separate from M1
-SQLite task records, so `tasks show` does not load investigation artifacts yet.
-Logs go to stderr. Provider errors exit 1; invalid input exits 2. Honest reports
-ending on insufficient evidence or limits exit 0 and carry the termination reason.
-
-To add an investigation to an Obsidian vault, first export its M4 graph notes,
-then add `--export-obsidian /path/to/vault` to `investigate`. It writes one note
-under `Investigations/`, linking the referenced symbols; it does not require
-Obsidian. Export destinations inside the source repository are rejected.
-
-The SDK exposes `client.investigate(path, Issue(...) or text, provider=...)`,
-returning `InvestigationReport`. Provider injection supports offline testing
-without subclassing the client. See [M5 architecture](docs/m5-investigation.md).
-
-### Investigation evaluation
-
-```sh
-uv run python scripts/benchmark_investigation.py \
-  tests/fixtures/investigation_cases.json --env-file .env \
-  --data-dir /tmp/repoagent-benchmark
-```
-
-Two controlled repositories cover email normalization and an inventory boundary.
-Labels remain in the evaluator. Metrics measure file/symbol recall over the final
-relevant evidence set, exact primary-citation localization, iterations, and
-retrieval calls. They are not Recall@K across multiple search rounds. Automated
-fixture-provider scores test plumbing; only live-provider runs assess model behavior.
-
-Limitations: the existing hashing embeddings and keyword reranker are lexical
-approximations, static calls may remain ambiguous, indexes can become stale,
-source snippets are truncated, and there is no execution evidence or confidence
-calibration. M5 runs synchronously and persists final traces; it does not offer
-crash-resumable LangGraph checkpoints or a background task API.
-
-## Unavailable workflows (task records)
-
-```sh
-uv run repoagent --data-dir .repoagent ask ./repo 'How is auth done?' --json
-uv run repoagent --data-dir .repoagent fix ./repo 'Login returns 500' --json
-uv run repoagent --data-dir .repoagent benchmark synthetic --json
-uv run repoagent --data-dir .repoagent tasks show TASK_ID --json
-```
-
-`ask`, `fix`, `test`, and `benchmark` validate input and record a **blocked**
-task with a `capability_unavailable` event, exiting with code **3**. This is
-expected behavior, not evidence of an attempted operation. Exit codes: 0
-success; 1 operational failure; 2 invalid input; 3 unavailable capability.
-
-## Python SDK
-
-```python
-from pathlib import Path
-from repoagent import RepoAgent, Settings
-
-client = RepoAgent(settings=Settings(data_dir=Path(".repoagent")))
-summary = client.index("./some-python-project")
-print(summary.chunk_count, summary.node_count, summary.edge_count)
-
-response = client.search(
-    "./some-python-project", "verify password", strategy="hybrid_graph", top_k=3
-)
-for hit in response.results:
-    print(hit.rank, hit.chunk.file_path, hit.chunk.qualified_name, hit.evidence)
-
-graph = client.retrieval().graph("./some-python-project")
-print(len(graph.nodes), len(graph.edges))
-```
-
-`index`, `search`, `analyze`, and `evaluate` return typed Pydantic models.
-`ask`, `fix`, `test`, `benchmark`, `submit`, `get_task`, and `task_events`
-remain available; unavailable workflows return blocked task records. The SDK
-never prints, terminates the process, or installs logging handlers. Storage
-and embedding providers are injectable (`index_store=`, `embedding_provider=`)
-behind the `IndexStore` and `EmbeddingProvider` protocols.
-
-## Configuration and data
-
-Settings use the `REPOAGENT_` prefix; see `.env.example`. Task data defaults
-to `~/.repoagent/tasks.sqlite3`; retrieval indexes are stored under
-`<data-dir>/indexes/`. Embedding configuration: `REPOAGENT_EMBEDDING_PROVIDER`
-(`hashing` deterministic local provider) and `REPOAGENT_EMBEDDING_DIMENSION`.
-An index records its provider and dimension; searching with a mismatched
-provider fails with a clear error instead of silently degrading. Logs contain
-allowlisted metadata only. Target code is never imported or executed by
-analysis, indexing, or search.
-
-## Validation
-
-```sh
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest
-uv run python scripts/check_quality.py
-uv build
-```
-
-The quality helper requires fresh statement coverage strictly above 85% and
-at most 150 physical lines per Python file. CI repeats validation and a wheel
-smoke test on Python 3.12/3.13.
-
-## Architecture and next step
-
-Source modules live directly in `src/` (`sdk/`, `domain/`, `application/`,
-`adapters/`, `analysis/` (M2), `retrieval/` and `evaluation/` (M3), `graph/`
-and `export/` (M4), `cli/`). See
-[architecture](docs/architecture.md) for boundaries and the pipelines;
-see [milestones](docs/milestones.md) for the roadmap.
-
-Next: **M8 — benchmarking** (synthetic, BugsInPy, SWE-bench subsets) consuming the
-M7 repair metrics. M8 is not implemented.
-
-## Static repair proposals (M6)
-
-M6 extends the M5 Investigator with a separate LangGraph workflow:
+## Example repair
 
 ```text
-Investigator → Developer → Static Patch Validator → Reviewer
-                                      ↑              │
-                                      └── REVISE ─────┘
-```
-
-`repoagent repair` first requires a confident, evidence-backed M5 root cause. The
-Developer receives only the report's assessed evidence and source snippets, then
-returns a typed plan and unified diff. The validator checks bounded unified diffs
-in memory: safe existing paths, hunk context, text-only changes, size, and Python
-syntax. The Reviewer independently returns approve, revise, or reject. An approval
-means only **approved for M7 runtime validation**.
-
-```sh
-uv run repoagent --env-file .env --data-dir /tmp/repoagent-data index ./project
-uv run repoagent --env-file .env --data-dir /tmp/repoagent-data repair \
-  ./project "Users with uppercase email addresses cannot log in" \
-  --max-revisions 2 --json
-```
-
-The patch is never applied to the target tree and target code is never executed.
-M6 exposes no shell, write, git, browser, or test tools. Revision feedback and
-review history are stored in the returned report, with an explicit terminal status
-for rejection, insufficient investigation, provider failure, or revision limit.
-Static validation does not prove that a patch fixes behavior; use `--execute` (M7).
-
-## Sandboxed validation and repair loop (M7)
-
-```sh
-uv run repoagent --env-file .env --data-dir /tmp/repoagent-data index ./project
-uv run repoagent --env-file .env --data-dir /tmp/repoagent-data repair \
-  ./project "Users with uppercase email addresses cannot log in" \
-  --execute --max-attempts 3 --timeout 300
-```
-
-Without `--execute`, `repair` behaves exactly as in M6 and runs nothing;
-`--max-attempts`/`--timeout` without `--execute` are rejected (exit 2).
-`--execute` exits 0 only for `VALIDATED`, otherwise 1.
-
-```text
-Detect validation (static) → Docker available? → Investigator
-  → Baseline (unpatched copy) → Developer → Static Validator → Reviewer
-  → Sandbox (fresh copy + patch) → Validate
-        PASS → VALIDATED
-        FAIL → deterministic triage ─┬→ Failure Analyzer (LLM, only if needed)
-                                     ├→ Developer revision (runtime feedback)
-                                     └→ Investigator re-entry (root cause uncertain, bounded)
-```
-
-Example output (fixture run):
-
-```text
-Investigation
-✓ root cause localized: raw email equality lookup
-Sandbox
-✓ created
-Baseline
-✗ 1 tests failed, 0 errors
+Investigation ✓ root cause localized
+Sandbox       ✓ created
+Baseline      ✓ tests passed (1 passed)
 Attempt 1
-  Developer ✓ patch generated: Normalize both values before email comparison.
-  Reviewer ✓ approve
-  ✗ 2 tests failed, 0 errors
+  Developer ✓ patch generated   Reviewer ✓ approve
+  ✗ 2 tests failed
   Failure Analyzer → patch missed normalization in secondary lookup
 Attempt 2
-  Developer ✓ patch generated: ...
-  Reviewer ✓ approve
-  ✓ tests passed (3 passed, 0 skipped)
-Result:
-VALIDATED
+  ✓ tests passed
+Result: VALIDATED
 ```
 
-**Statuses.** `validated`, `validation_failed` (analyzer says stop, or the
-Developer repeated a failed patch), `patch_apply_failed`, `sandbox_failed`,
-`timeout`, `max_attempts`, `baseline_failed` (baseline could not run to a parseable
-result), `insufficient_evidence`, `validation_unavailable` (no pytest detected),
-`review_rejected`, `provider_error`. Developer/Reviewer approval alone never yields
-`validated`.
+This transcript is also a format example: the loop runs offline with a fake
+sandbox and a deterministic provider. `VALIDATED` requires a completed sandbox
+run, an unchanged original repository, pytest exit code 0, and no new Ruff
+violations relative to the baseline. A reviewer's approval alone never
+produces `VALIDATED`.
 
-**Validation rule.** A repair is `VALIDATED` only if the sandbox completed, the
-original repository fingerprint is unchanged, pytest exits 0 on the patched copy,
-and Ruff (when the project configures it) reports no violation absent from the
-baseline. The baseline distinguishes pre-existing failures (`fixed_failures`,
-`persisting_failures`) from regressions (`new_failures`, `new_lint`).
+## RAG architecture
 
-**Commands.** Validation commands come from static detection
-(`pyproject.toml`, `pytest.ini`, `setup.cfg`, `tox.ini`, `tests/`, `ruff.toml`),
-never from model output. Command kinds are an enum mapped to constant argv
-vectors (`python -m pytest -q -rfE -p no:cacheprovider -o addopts=`,
-`python -m ruff check --no-cache --output-format=concise .`) and filtered by an
-allowlist. Dependencies are installed wheel-only (`--only-binary=:all:`) from
-specifiers that must match a strict name/extras/version grammar; URLs, paths,
-options, `-e`, and markers are skipped and recorded.
+- **Chunks** follow functions, methods, class preambles, and module code, with
+  stable IDs derived from the repository name, path, symbol, and source hash.
+  IDs do not depend on checkout location.
+- **Retrievers**: BM25 with identifier-aware tokenization; a vector search
+  over deterministic hashing embeddings behind an `EmbeddingProvider`
+  protocol; reciprocal-rank fusion (`hybrid`); an optional keyword reranker.
+- **Graph RAG** (`hybrid_graph`): hybrid results seed a bounded,
+  cycle-safe graph expansion, scored by seed rank × distance decay × edge
+  weight and fused with RRF. Each result carries lexical rank, vector rank,
+  and the graph path.
 
-**Token efficiency.** Exit codes, pytest/Ruff results, patch application,
-timeouts, collection errors, lint-only failures, and repeated identical failures
-are handled deterministically. The Failure Analyzer is called only for genuine test
-failures and receives the issue, root cause, current diff (≤6000 chars), at most
-four evidence snippets from patched files, failing tests, a ≤2000-char output
-tail, and one-line summaries of previous attempts. Sandbox and index availability
-are checked before any LLM call.
+## Knowledge graph
 
-**Configuration** (`REPOAGENT_` prefix): `EXECUTION_TIMEOUT` (per command,
-seconds), `REPAIR_MAX_ATTEMPTS`, `REPAIR_MAX_REINVESTIGATIONS`, `SANDBOX_IMAGE`,
-`SANDBOX_MEMORY_MB`, `SANDBOX_CPUS`, `SANDBOX_PIDS_LIMIT`,
-`SANDBOX_MAX_OUTPUT_BYTES`, `SANDBOX_INSTALL_TIMEOUT`, `SANDBOX_NETWORK`
-(`install_only`|`none`), `SANDBOX_DEPENDENCIES` (`project`|`tools`|`none`),
-`SANDBOX_CLEANUP` (`always`|`keep_failed_workspace`),
-`SANDBOX_ALLOWED_COMMANDS`, `SANDBOX_WORKSPACE_DIR`.
+The graph has module, class, function, and method nodes with typed
+`DEFINES`/`CONTAINS`/`IMPORTS`/`INHERITS`/`CALLS` edges. Call resolution is
+conservative: ambiguous calls are marked `resolved: false` instead of guessed.
+The same graph feeds retrieval, the Obsidian exporter, and the API/dashboard
+neighborhood view (`GET /api/graph`). There is no separate graph system for
+visualization.
 
-**Security controls.** Every target is treated as hostile:
+## LangGraph workflows
 
-- A fresh host-private copy per run; `.git`, virtualenvs, caches, symlinks,
-  FIFOs/devices, `.env*`, keys, `.netrc`/`.pypirc`/`.npmrc` are never copied;
-  files are opened with `O_NOFOLLOW`; file-count and size limits apply.
-- The patch is re-checked against the copy (path traversal, stale context, syntax)
-  and written without following links; failure is `patch_apply_failed`.
-- Containers: `--network none` for validation, `--read-only` root filesystem,
-  `/tmp` tmpfs, `--cap-drop ALL`, `no-new-privileges`, non-root user, memory,
-  swap, CPU, PID, open-file and file-size limits, `--init`, explicit minimal
-  environment (no host variables), only the copy and the dependency directory
-  mounted (dependencies read-only).
-- Dependency preparation runs in a separate container that mounts only the empty
-  dependency directory; the repository is never present while network is enabled.
-- Host `docker` CLI calls use argv lists (`shell=False`), a minimal environment
-  (no API keys), head/tail-bounded output capture, and process-group kill plus
-  `docker rm --force` on timeout.
-- Workspaces, dependency directories, and containers are removed after success,
-  failure, patch errors, timeouts, and exceptions.
+- **Investigator**: iterative retrieval and hypothesis challenge loop, with
+  hard limits on iterations, queries, evidence, tool calls, and context size.
+- **Repair (M6)**: Developer → static validator → Reviewer, with bounded
+  revision loops.
+- **Validated repair (M7)**: baseline → propose (reuses M6) → execute →
+  analyze → (propose | reinvestigate | report). A terminal status always
+  routes to the report, and the recursion limit is derived from the attempt
+  limits.
 
-**Remaining isolation limitations.** Docker shares the host kernel; a kernel or
-runtime escape is out of scope (use gVisor/Kata/Firecracker or a VM for stronger
-isolation). Dependency installation with `install_only` network can reach any
-package index host and installs the target's declared wheels, whose import-time
-code then runs (offline) during tests. Docker Desktop on macOS/Windows applies
-limits to its VM. Rootless Docker and user-namespace remapping are not configured
-by RepoAgent. Running RepoAgent as root maps the container to `nobody`, which may
-not be able to read the private workspace. Image references are validated but not
-digest-pinned by default; pin `REPOAGENT_SANDBOX_IMAGE` by digest for
-reproducibility.
+## Docker sandbox
 
-**Other limitations.** Only Python/pytest (+Ruff) validation is supported; target
-repositories needing services, databases, compilers, or sdists will fail with
-`baseline_failed`/`sandbox_failed`. Dependency manifests changed by a patch are not
-re-installed. Failure analysis and re-investigation are bounded but not calibrated;
-retrieval for re-investigation uses the stored index snapshot. The loop is
-synchronous and reports persist at `<data-dir>/repairs/<UUID>.json` without
-crash-resumable checkpoints.
+Each run gets a fresh copy of the repository, excluding `.git`, secrets,
+symlinks, and special files. The patch is re-verified against the copy.
+Validation uses allowlisted command kinds mapped to constant argv lists;
+LLM output never becomes a shell command. The container runs with
+`--network none`, a read-only root filesystem, a tmpfs `/tmp`, all
+capabilities dropped, `no-new-privileges`, a non-root user, memory/CPU/PID/
+file-size limits, and no host environment. Dependency installation (wheels
+only) runs in a separate container that does not mount the repository.
+Output is capped, and timeouts kill the container. A real Docker integration
+test uses a hostile target whose own tests confirm the isolation from inside
+the container: no network, host paths invisible, read-only root, non-root
+user, and no host secrets.
 
-SDK:
+## Benchmark methodology
 
-```python
-report = client.repair_and_validate(
-    "./project", "Uppercase emails cannot log in", max_attempts=3, timeout=300
-)
-print(report.status, report.metrics.attempts, report.metrics.llm_calls)
-for attempt in report.attempts:
-    print(attempt.number, attempt.validation.summary, attempt.failure_analysis)
+Benchmark tasks include the repository commit, issue, expected files and
+symbols, gold patch, fail-to-pass and pass-to-pass tests, hidden tests, and
+the expected outcome. Labels stay in the evaluator. Retrieval mode is
+LLM-free. Investigate mode scores localization against the primary
+hypothesis. Repair mode runs the full M7 loop and then an independent
+hidden-test run in a fresh sandbox. Ablations (`full`, `no_graph`,
+`no_reviewer`, `single_pass`, `no_retry`) toggle existing components through
+flags. Each run stores `manifest.json` (version, commit, dirty flag, suite
+hash, configuration, provider, image, timestamps; no secrets),
+`results.jsonl`, and `summary.json`. Details:
+[docs/benchmarks.md](docs/benchmarks.md).
+
+## Benchmark results
+
+All values below are measured. Retrieval results come from committed runs in
+[`benchmarks/results/`](benchmarks/results/). Stage B and C are small subsets
+chosen for repository size, so they are not representative samples.
+
+**Retrieval (issue text as query), K = 5: Recall@5 / MRR**
+
+| Stage (tasks) | BM25 | Vector | Hybrid | Hybrid+Graph |
+| --- | --- | --- | --- | --- |
+| A — internal fixtures (6) | 1.000 / 0.700 | 0.667 / 0.492 | 1.000 / 0.622 | 1.000 / **0.722** |
+| B — BugsInPy subset (10)* | 0.125 / 0.200 | 0.000 / 0.000 | 0.087 / 0.083 | **0.450 / 0.350** |
+| C — SWE-bench Verified subset (9) | 0.278 / 0.198 | 0.333 / **0.356** | 0.444 / 0.333 | **0.463** / 0.261 |
+
+\*BugsInPy provides no issue text; queries are synthesized from failing test names.
+
+Graph expansion clearly helped on the BugsInPy subset and had the best MRR on
+the fixtures. On the SWE-bench subset it produced the best Recall@5 but a
+lower MRR than vector or hybrid, so the Graph RAG benefit is not uniform. K = 10
+results, the token-efficiency measurement (prompt characters −35.7% on
+deterministic repair runs), and caveats are in
+[docs/benchmarks.md](docs/benchmarks.md).
+
+**Live investigation localization** on Stage A (6 tasks, Groq
+`openai/gpt-oss-20b`, one run each; run `20260914T234945Z-dfa3f8`):
+
+| Configuration | File / symbol localization | Avg LLM calls | Avg tokens in / out | Avg runtime | Failures |
+| --- | --- | --- | --- | --- | --- |
+| full (graph retrieval) | 33.3% / 33.3% | 4.50 | 6,167 / 3,590 | 68.7 s | insufficient_evidence 3, provider_error 1 |
+| no_graph (hybrid only) | 66.7% / 66.7% | 4.83 | 6,262 / 3,493 | 81.8 s | provider_error 2 |
+
+With 6 tasks and a single nondeterministic sample per configuration, this
+difference is not statistically meaningful. Provider errors were schema
+violations in model output (Groq `json_validate_failed`).
+
+| Repair metric | Value |
+| --- | --- |
+| Validated repairs, repair success rate (hidden tests), average attempts | not measured |
+| `no_reviewer`, `single_pass`, `no_retry` ablations; repair failure breakdown | not measured |
+
+## API and dashboard
+
+`repoagent serve` starts FastAPI on `127.0.0.1` with these endpoints:
+
+- `POST /api/analyze`, `/api/index`, `/api/search`
+- `GET /api/graph`
+- `POST /api/investigate` and `POST /api/repair`: these return `202` with a
+  job record and never block on the work
+- `GET /api/tasks`, `/api/tasks/{id}`, `/api/tasks/{id}/result`
+- `GET /api/benchmarks/runs[/{id}]`
+- `GET /api/health`, `/api/config`
+
+Jobs run on a local worker pool behind a `JobQueue` port and persist their
+records and results as JSON behind a `JobStore` port. A durable queue can
+replace them without changing routes.
+
+The dashboard (`dashboard/`, React + TypeScript + Vite) submits
+investigations and repairs and polls job progress. It shows the stage
+timeline, evidence, root cause, graph neighborhood, patch diff, reviewer
+decision, sandbox attempts, token usage, and final status.
+
+```sh
+cd dashboard && npm ci && npm run build   # then: repoagent serve --dashboard dashboard/dist ...
+cd dashboard && npm run dev               # dev server proxies /api to 127.0.0.1:8000
 ```
 
-`RepoAgent(sandbox_runner=...)` accepts any `SandboxRunner` implementation; the
-default is `DockerSandboxRunner`. Metrics per repair: attempts, LLM calls,
-retrieval calls, investigations, files/lines changed, validation and sandbox
-seconds, tests before/after, and final status.
+## Security model
+
+- Targets, issues, source, test output, and model output are untrusted data.
+  Prompts separate them from instructions, and structured outputs are
+  validated.
+- The original repository is never written; its fingerprint is checked around
+  every sandbox run. Only the sandbox executes target code, and only through
+  allowlisted commands.
+- API requests are limited to local repositories under `--allow-root`
+  (resolved after symlinks, URLs rejected). **Execution** is limited to
+  `--execution-repo` entries, so arbitrary repositories get analysis, search,
+  and investigation only.
+- The API has no shell endpoint. Binding a non-loopback host requires
+  `REPOAGENT_API_TOKEN` (bearer token, constant-time comparison). Error
+  responses are sanitized.
+- Benchmark git fetches accept only pinned GitHub HTTPS commits with hooks,
+  symlinks, and LFS disabled.
+- **Remaining limitations**: Docker shares the host kernel (use gVisor, Kata,
+  or a VM for hostile multi-tenant use). The dependency install phase has
+  network access and installs the target's declared wheels. The API has no
+  user accounts, rate limiting, or TLS termination. The local job queue is
+  single-process (records persist, but queued work does not survive a
+  restart).
+
+## Limitations
+
+- **Unmeasured repair performance.** Live-model repair success and most
+  ablations are not measured. The live localization run covers only 6 tasks,
+  one sample each, on a free-tier model.
+- **Evaluation scope.** Benchmark subsets are small (6, 10, and 9 tasks)
+  without confidence intervals. BugsInPy and SWE-bench tasks are evaluated
+  for retrieval only, because repair execution needs per-project environments
+  that RepoAgent does not build.
+- **Analysis depth.** Python only. Hashing embeddings are lexical, not
+  semantic. Call resolution is name-based.
+- **Validation scope.** Validation supports pytest and Ruff. Dependency
+  manifests changed by a patch are not reinstalled.
+- **Confidence.** Confidence values are uncalibrated.
+- **Dashboard progress.** Progress granularity comes from job events and the
+  final report (no streaming of in-graph steps).
+
+## Development
+
+```sh
+uv run ruff check . && uv run ruff format --check . && uv run pytest && uv run python scripts/check_quality.py
+cd dashboard && npm run typecheck && npm test && npm run build
+```
+
+The quality gates require statement coverage strictly above 85% and at most
+150 lines per Python file. Detailed per-milestone usage:
+[docs/guide.md](docs/guide.md). SDK reference: [docs/sdk.md](docs/sdk.md).

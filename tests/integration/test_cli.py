@@ -28,7 +28,7 @@ def test_help_version_no_side_effects(cli, tmp_path, args):
     assert not (tmp_path / "data").exists()
 
 
-@pytest.mark.parametrize("command", ["ask", "fix", "test", "benchmark"])
+@pytest.mark.parametrize("command", ["ask", "fix", "test"])
 def test_workflow_is_blocked_and_inert(cli, tmp_path, monkeypatch, command):
     target = tmp_path / "target"
     target.mkdir()
@@ -41,7 +41,7 @@ def test_workflow_is_blocked_and_inert(cli, tmp_path, monkeypatch, command):
 
     monkeypatch.setattr(subprocess, "Popen", forbidden)
     monkeypatch.setattr(socket, "create_connection", forbidden)
-    args = [command, "synthetic" if command == "benchmark" else str(target)]
+    args = [command, str(target)]
     if command in {"ask", "fix"}:
         args.append("private issue")
     result = cli(*args, "--json")
@@ -86,13 +86,13 @@ def test_missing_task_is_operational_error(cli):
 
 def test_invalid_settings_create_no_storage(cli, monkeypatch, tmp_path):
     monkeypatch.setenv("REPOAGENT_MAX_RETRIES", "-1")
-    result = cli("benchmark", "synthetic")
+    result = cli("test", str(tmp_path))
     assert result.exit_code == 2
     assert not (tmp_path / "data").exists()
 
 
 def test_missing_explicit_env_file(cli, tmp_path):
-    result = cli("--env-file", str(tmp_path / "missing"), "benchmark", "synthetic")
+    result = cli("--env-file", str(tmp_path / "missing"), "test", str(tmp_path))
     assert result.exit_code == 2
     assert not (tmp_path / "data").exists()
 
@@ -100,7 +100,7 @@ def test_missing_explicit_env_file(cli, tmp_path):
 def test_storage_failure_is_sanitized(tmp_path):
     target = tmp_path / "secret-path"
     target.write_text("not a directory")
-    result = runner.invoke(app, ["--data-dir", str(target), "benchmark", "synthetic"])
+    result = runner.invoke(app, ["--data-dir", str(target), "test", str(tmp_path)])
     assert result.exit_code == 1
     assert "secret-path" not in result.output
     assert "filesystem operation failed" in result.stderr

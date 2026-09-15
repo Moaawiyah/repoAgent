@@ -51,14 +51,19 @@ def trace(
     ]
 
 
-def failure(state: InvestigationState, action: str) -> dict:
+GENERIC_FAILURE = "Provider call or output failed"
+
+
+def failure(state: InvestigationState, action: str, reason: str = "") -> dict:
+    """``reason`` is a RepoAgent-authored LLMError message, never provider text."""
+    message = f"{GENERIC_FAILURE}: {reason}"[:500] if reason else GENERIC_FAILURE
     return {
         "termination": "provider_error",
-        "error": "Provider call or output failed",
+        "error": message,
         "usage": state.usage.model_copy(
             update={"llm_calls": state.usage.llm_calls + 1}
         ),
-        "trace": trace(state, action, "stop", "Provider call or output failed"),
+        "trace": trace(state, action, "stop", message),
     }
 
 

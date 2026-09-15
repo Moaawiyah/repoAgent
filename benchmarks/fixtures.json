@@ -1,0 +1,156 @@
+{
+  "name": "fixtures",
+  "description": "Stage A: small synthetic Python repositories authored for RepoAgent; each has visible passing tests and evaluator-only hidden tests.",
+  "source": "RepoAgent tests/fixtures (synthetic)",
+  "tasks": [
+    {
+      "task_id": "auth-uppercase-email",
+      "benchmark": "fixtures",
+      "repository": {
+        "source": "../tests/fixtures/auth_bug"
+      },
+      "issue": "Users with uppercase email addresses cannot log in",
+      "expected_files": [
+        "app/users/repository.py"
+      ],
+      "expected_symbols": [
+        "app.users.repository.UserRepository.find_by_email"
+      ],
+      "validation": {
+        "fail_to_pass": [
+          "tests/test_hidden_email.py::test_uppercase_email_login"
+        ],
+        "hidden_tests": {
+          "tests/test_hidden_email.py": "from app.auth.service import AuthService\nfrom app.users.repository import UserRepository\n\n\ndef test_uppercase_email_login():\n    users = UserRepository([{\"email\": \"ada@example.com\", \"username\": \"ada\"}])\n    assert AuthService(users).login(\"ADA@Example.com\", \"lovelace\") == \"session:ada\"\n"
+        }
+      },
+      "expected_outcome": "validated_repair",
+      "gold_patch": "--- a/app/users/repository.py\n+++ b/app/users/repository.py\n@@ -1,1 +1,1 @@\n-            if user[\"email\"] == email:\n+            if user[\"email\"].lower() == email.lower():\n"
+    },
+    {
+      "task_id": "inventory-bug",
+      "benchmark": "fixtures",
+      "repository": {
+        "source": "../tests/fixtures/bench_inventory"
+      },
+      "issue": "An order for exactly the available stock is rejected. Ordering 5 units when 5 are in stock should be confirmed and leave zero available.",
+      "expected_files": [
+        "shop/inventory.py"
+      ],
+      "expected_symbols": [
+        "shop.inventory.Inventory.reserve"
+      ],
+      "validation": {
+        "fail_to_pass": [
+          "tests/test_hidden_exact_stock.py::test_exact_stock_order_is_confirmed",
+          "tests/test_hidden_exact_stock.py::test_over_stock_order_is_rejected"
+        ],
+        "hidden_tests": {
+          "tests/test_hidden_exact_stock.py": "from shop.inventory import Inventory\nfrom shop.orders import place_order\n\n\ndef test_exact_stock_order_is_confirmed():\n    inventory = Inventory(5)\n    assert place_order(inventory, 5) == \"confirmed\"\n    assert inventory.available == 0\n\n\ndef test_over_stock_order_is_rejected():\n    assert place_order(Inventory(5), 6) == \"rejected\"\n"
+        }
+      },
+      "expected_outcome": "validated_repair",
+      "gold_patch": "--- a/shop/inventory.py\n+++ b/shop/inventory.py\n@@ -1,1 +1,1 @@\n-        if quantity < self.available:\n+        if quantity <= self.available:\n"
+    },
+    {
+      "task_id": "slugify-bug",
+      "benchmark": "fixtures",
+      "repository": {
+        "source": "../tests/fixtures/bench_slugify"
+      },
+      "issue": "Article URLs contain repeated hyphens when a title has multiple spaces, e.g. 'Hello   World' becomes /articles/hello---world instead of /articles/hello-world.",
+      "expected_files": [
+        "textkit/slug.py"
+      ],
+      "expected_symbols": [
+        "textkit.slug.slugify"
+      ],
+      "validation": {
+        "fail_to_pass": [
+          "tests/test_hidden_slug.py::test_repeated_spaces_collapse",
+          "tests/test_hidden_slug.py::test_tabs_and_punctuation"
+        ],
+        "hidden_tests": {
+          "tests/test_hidden_slug.py": "from textkit.articles import article_url\n\n\ndef test_repeated_spaces_collapse():\n    assert article_url(\"Hello   World\") == \"/articles/hello-world\"\n\n\ndef test_tabs_and_punctuation():\n    assert article_url(\" Big\\tNews!  Today \") == \"/articles/big-news-today\"\n"
+        }
+      },
+      "expected_outcome": "validated_repair",
+      "gold_patch": "--- a/textkit/slug.py\n+++ b/textkit/slug.py\n@@ -1,1 +1,1 @@\n-    return re.sub(r\"\\s\", \"-\", text).strip(\"-\")\n+    return re.sub(r\"[\\s-]+\", \"-\", text).strip(\"-\")\n"
+    },
+    {
+      "task_id": "pagination-bug",
+      "benchmark": "fixtures",
+      "repository": {
+        "source": "../tests/fixtures/bench_pagination"
+      },
+      "issue": "Search reports too few pages: 21 matching results with 10 per page show only 2 pages, so the last result can never be reached.",
+      "expected_files": [
+        "listing/paginate.py"
+      ],
+      "expected_symbols": [
+        "listing.paginate.page_count"
+      ],
+      "validation": {
+        "fail_to_pass": [
+          "tests/test_hidden_pages.py::test_partial_last_page_counts",
+          "tests/test_hidden_pages.py::test_no_results_zero_pages"
+        ],
+        "hidden_tests": {
+          "tests/test_hidden_pages.py": "from listing.search import search\n\n\ndef test_partial_last_page_counts():\n    data = [f\"item {i}\" for i in range(21)]\n    assert search(data, \"item\", size=10)[\"pages\"] == 3\n\n\ndef test_no_results_zero_pages():\n    assert search([], \"x\")[\"pages\"] == 0\n"
+        }
+      },
+      "expected_outcome": "validated_repair",
+      "gold_patch": "--- a/listing/paginate.py\n+++ b/listing/paginate.py\n@@ -1,1 +1,1 @@\n-    return total_items // page_size\n+    return -(-total_items // page_size)\n"
+    },
+    {
+      "task_id": "config-bug",
+      "benchmark": "fixtures",
+      "repository": {
+        "source": "../tests/fixtures/bench_config"
+      },
+      "issue": "Setting APP_DEBUG=false still enables debug mode; values like 'false', '0' and 'no' should disable it.",
+      "expected_files": [
+        "settings_app/parse.py"
+      ],
+      "expected_symbols": [
+        "settings_app.parse.parse_bool"
+      ],
+      "validation": {
+        "fail_to_pass": [
+          "tests/test_hidden_bool.py::test_false_values_disable_debug",
+          "tests/test_hidden_bool.py::test_true_values_enable_debug"
+        ],
+        "hidden_tests": {
+          "tests/test_hidden_bool.py": "import pytest\n\nfrom settings_app.loader import load_settings\n\n\n@pytest.mark.parametrize(\"value\", [\"false\", \"0\", \"no\", \"FALSE\", \" off \"])\ndef test_false_values_disable_debug(value):\n    assert load_settings({\"APP_DEBUG\": value})[\"debug\"] is False\n\n\n@pytest.mark.parametrize(\"value\", [\"true\", \"1\", \"yes\", \"On\"])\ndef test_true_values_enable_debug(value):\n    assert load_settings({\"APP_DEBUG\": value})[\"debug\"] is True\n"
+        }
+      },
+      "expected_outcome": "validated_repair",
+      "gold_patch": "--- a/settings_app/parse.py\n+++ b/settings_app/parse.py\n@@ -1,1 +1,1 @@\n-    return bool(value.strip())\n+    return value.strip().lower() in {\"1\", \"true\", \"yes\", \"on\"}\n"
+    },
+    {
+      "task_id": "cache-bug",
+      "benchmark": "fixtures",
+      "repository": {
+        "source": "../tests/fixtures/bench_cache"
+      },
+      "issue": "Cached profiles stay stale for too long: with a 10 second TTL, a profile is still served from cache 15 seconds after it was stored.",
+      "expected_files": [
+        "cachekit/ttl.py"
+      ],
+      "expected_symbols": [
+        "cachekit.ttl.TTLCache.get"
+      ],
+      "validation": {
+        "fail_to_pass": [
+          "tests/test_hidden_ttl.py::test_value_expires_after_ttl",
+          "tests/test_hidden_ttl.py::test_value_available_before_ttl"
+        ],
+        "hidden_tests": {
+          "tests/test_hidden_ttl.py": "from cachekit.ttl import TTLCache\n\n\ndef test_value_expires_after_ttl():\n    now = [0.0]\n    cache = TTLCache(10, lambda: now[0])\n    cache.set(\"k\", \"v\")\n    now[0] = 10.5\n    assert cache.get(\"k\") is None\n\n\ndef test_value_available_before_ttl():\n    now = [0.0]\n    cache = TTLCache(10, lambda: now[0])\n    cache.set(\"k\", \"v\")\n    now[0] = 9.9\n    assert cache.get(\"k\") == \"v\"\n"
+        }
+      },
+      "expected_outcome": "validated_repair",
+      "gold_patch": "--- a/cachekit/ttl.py\n+++ b/cachekit/ttl.py\n@@ -1,1 +1,1 @@\n-        if self._clock() - stored_at > self._ttl * 2:\n+        if self._clock() - stored_at > self._ttl:\n"
+    }
+  ]
+}

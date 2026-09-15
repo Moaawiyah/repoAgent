@@ -137,3 +137,11 @@ def test_oversized_files_are_skipped(tmp_path, monkeypatch):
     monkeypatch.setattr(python_ast, "MAX_SOURCE_BYTES", 4)
     analysis = analyze(tmp_path, "value = 12345\n")
     assert analysis.error.error_type == "too_large"
+
+
+def test_target_syntax_warnings_are_not_emitted(recwarn, capsys):
+    from repoagent.analysis.python_ast import parse_untrusted
+
+    module = parse_untrusted('PATTERN = "\\d+"\n', "requests/api.py")
+    assert module.body and not recwarn.list
+    assert "SyntaxWarning" not in capsys.readouterr().err

@@ -29,6 +29,7 @@ class InvestigateRequest(AnalysisModel):
     issue: Issue
     max_iterations: int | None = Field(default=None, ge=1, le=10)
     top_k: int = Field(default=5, ge=1, le=10)
+    use_graph: bool = True
 
     @field_validator("issue", mode="before")
     @classmethod
@@ -59,7 +60,7 @@ class InvestigationService:
         search = SearchService(self._store, self._embedding)
         graph = None
         snapshot = search.snapshot(request.repository)
-        if snapshot.graph is not None and snapshot.graph.nodes:
+        if request.use_graph and snapshot.graph is not None and snapshot.graph.nodes:
             graph = store_from_snapshot(snapshot.graph)
         strategy = RetrievalStrategy.HYBRID_GRAPH if graph else RetrievalStrategy.HYBRID
         bounded = limits or InvestigationLimits()

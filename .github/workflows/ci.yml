@@ -29,3 +29,22 @@ jobs:
           /tmp/repoagent-wheel/bin/repoagent --help
           /tmp/repoagent-wheel/bin/repoagent investigate --help
           /tmp/repoagent-wheel/bin/python -c "from repoagent import RepoAgent, Issue, InvestigationReport; import langgraph.graph"
+          /tmp/repoagent-wheel/bin/repoagent benchmark --help
+          /tmp/repoagent-wheel/bin/python -c "from repoagent.api.app import create_app; from repoagent.benchmark.runner import BenchmarkRunner"
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --audit-level=high

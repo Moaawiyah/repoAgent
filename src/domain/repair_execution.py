@@ -72,10 +72,16 @@ class RepairMetrics(AnalysisModel):
 
     attempts: int = 0
     llm_calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    prompt_chars: int = 0
+    stage_calls: dict[str, int] = Field(default_factory=dict)
     retrieval_calls: int = 0
     investigations: int = 0
     files_changed: int = 0
     lines_changed: int = 0
+    lines_added: int = 0
+    lines_removed: int = 0
     validation_seconds: float = 0.0
     sandbox_seconds: float = 0.0
     tests_before: dict[str, int] | None = None

@@ -10,21 +10,25 @@ from repoagent.agent.reviewer import ReviewerAgent
 from repoagent.ai.provider import LLMProvider
 from repoagent.domain.errors import LLMError
 from repoagent.domain.investigation import InvestigationReport
-from repoagent.domain.repair import RepairReport
+from repoagent.domain.repair import PatchReview, RepairReport
 
 
 class RepairAgent:
     """Composes a bounded, read-only patch generation and review graph."""
 
     def __init__(
-        self, repository: str, provider: LLMProvider, max_revisions: int
+        self,
+        repository: str,
+        provider: LLMProvider,
+        max_revisions: int,
+        reviewer: bool = True,
     ) -> None:
         self._developer, self._reviewer = (
             DeveloperAgent(provider),
             ReviewerAgent(provider),
         )
         self._validator = StaticPatchValidator(repository)
-        self._max_revisions = max_revisions
+        self._max_revisions, self._reviewer_enabled = max_revisions, reviewer
         self._graph = self._build()
 
     def _develop(self, state: RepairState) -> dict:
@@ -45,6 +49,13 @@ class RepairAgent:
     def _review(self, state: RepairState) -> dict:
         if state.proposal is None or state.validation is None:
             return {"error": "Patch validation is unavailable"}
+        if not self._reviewer_enabled:
+            review = PatchReview(
+                decision="approve" if state.validation.valid else "reject",
+                rationale="Reviewer disabled by experiment configuration.",
+                concerns=state.validation.errors,
+            )
+            return {"reviews": [*state.reviews, review], "feedback": ""}
         try:
             review = self._reviewer.review(
                 state.investigation, state.proposal, state.validation, state.runtime

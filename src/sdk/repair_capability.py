@@ -5,6 +5,7 @@ from typing import Protocol
 
 from repoagent.ai.provider import LLMProvider
 from repoagent.config import Settings
+from repoagent.domain.features import RepairFeatures
 from repoagent.domain.investigation import Issue
 from repoagent.domain.repair import RepairReport
 from repoagent.domain.repair_execution import ValidatedRepairReport
@@ -48,6 +49,7 @@ class RepairCapability:
         max_revisions: int | None = None,
         timeout: int | None = None,
         provider: LLMProvider | None = None,
+        features: RepairFeatures | None = None,
     ) -> ValidatedRepairReport:
         """Repair, execute validation in an isolated sandbox, and retry (M7).
 
@@ -64,4 +66,5 @@ class RepairCapability:
             max_revisions=max_revisions,
             timeout=timeout,
             provider=provider,
+            features=features,
         )

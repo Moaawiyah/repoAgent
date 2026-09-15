@@ -1,12 +1,24 @@
 """Single-file Python static analysis using the built-in ast module."""
 
 import ast
+import warnings
 from pathlib import Path, PurePosixPath
 
 from repoagent.analysis.results import FileAnalysis, FileError
 from repoagent.analysis.symbols import ModuleVisitor
 
 MAX_SOURCE_BYTES = 1_000_000
+
+
+def parse_untrusted(source: str, filename: str) -> ast.Module:
+    """Parse target source without emitting its compile-time warnings.
+
+    Warnings such as invalid escape sequences would otherwise be printed to
+    stderr, and the warning display can echo unrelated host files.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return ast.parse(source, filename=filename)
 
 
 def module_name(relative_path: str) -> str:
@@ -68,7 +80,7 @@ class PythonAnalyzer:
     @staticmethod
     def _parse(relative_path: str, source: str) -> ast.Module | FileError:
         try:
-            return ast.parse(source, filename=relative_path)
+            return parse_untrusted(source, relative_path)
         except (SyntaxError, ValueError, RecursionError):
             return FileError(
                 path=relative_path,

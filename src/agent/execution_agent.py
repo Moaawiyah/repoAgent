@@ -26,10 +26,11 @@ class ExecutionRepairAgent:
         session: SandboxSession,
         reinvestigate: Reinvestigator,
         limits: RepairLoopLimits,
+        reviewer: bool = True,
     ) -> None:
         self._provider, self._limits = provider, limits
         self._sandbox = SandboxNodes(session)
-        self._revision = RevisionNodes(provider, reinvestigate)
+        self._revision = RevisionNodes(provider, reinvestigate, reviewer)
         self._graph = self._build()
 
     @staticmethod

@@ -22,8 +22,11 @@ class CodeChunker:
 
     language = "python"
 
-    def __init__(self, repository_id: str) -> None:
-        self._repo = repository_id
+    def __init__(self, repository_id: str, identity_scope: str | None = None) -> None:
+        # Chunk IDs use a location-independent scope (the repository name) so
+        # identical source keeps identical IDs, and ranking tie-breaks, wherever
+        # it is checked out; ``repository_id`` still records the exact index.
+        self._repo, self._scope = repository_id, identity_scope or repository_id
 
     def chunk(self, analysis: RepositoryAnalysis, root: Path) -> list[CodeChunk]:
         """Chunk every analyzed file, reading each file exactly once."""
@@ -108,7 +111,7 @@ class CodeChunker:
         symbol_type = SymbolType.MODULE if symbol is module else symbol.symbol_type
         return CodeChunk(
             chunk_id=make_chunk_id(
-                self._repo, file.path, symbol.qualified_name, source
+                self._scope, file.path, symbol.qualified_name, source
             ),
             repository_id=self._repo,
             file_path=file.path,

@@ -20,12 +20,12 @@ The distribution includes `py.typed` for downstream type checkers.
 | Method | Inputs | Output |
 | --- | --- | --- |
 | `RepoAgent(settings=None, store=None)` | Keyword-only settings and/or injected store. | A lazy client; no storage I/O. |
-| `index(source, *, commit=None)` | Existing directory Path/string or HTTPS GitHub URL. | Blocked `TaskRecord`, requires M3. |
-| `analyze(source, *, commit=None)` | Same repository input. | Blocked `TaskRecord`, requires M2. |
-| `ask(source, question, *, commit=None)` | Repository and nonempty text. | Blocked `TaskRecord`, requires M5. |
-| `fix(source, issue, *, commit=None)` | Repository and nonempty text. | Blocked `TaskRecord`, requires M7. |
-| `test(source, *, commit=None)` | Repository input. | Blocked `TaskRecord`, requires M7. |
-| `benchmark(suite)` | Supported benchmark name. | Blocked `TaskRecord`, requires M9. |
+| `index(source, *, commit=None)` | Existing local directory. | `IndexSummary` (M3/M4). |
+| `analyze(source, *, commit=None)` | Same repository input. | `RepositoryAnalysis` (M2). |
+| `ask(source, question, *, commit=None)` | Repository and nonempty text. | Blocked `TaskRecord` (use `investigate`). |
+| `fix(source, issue, *, commit=None)` | Repository and nonempty text. | Blocked `TaskRecord` (use `repair_and_validate`). |
+| `test(source, *, commit=None)` | Repository input. | Blocked `TaskRecord` placeholder. |
+| `benchmarks()` | — | `BenchmarkApi` (`run`, `load`, `runs`); see M8 section. |
 | `submit(request)` | Validated `TaskRequest`. | Blocked `TaskRecord`. |
 | `get_task(task_id)` | UUID or UUID string. | Persisted `TaskRecord`. |
 | `task_events(task_id)` | UUID or UUID string. | Sequence-ordered `list[TaskEvent]`. |
@@ -104,3 +104,20 @@ investigation, detected `ValidationPlan`, baseline `ValidationResult`, every
 and an `ExecutionStatus`. Inject `RepoAgent(sandbox_runner=...)` to replace the
 default `DockerSandboxRunner`; implementations must satisfy the `SandboxRunner`
 protocol and clean up on exit. The SDK never runs target code outside the runner.
+
+## M8 benchmarks
+
+```python
+client = RepoAgent(settings=Settings(_env_file=".env"))
+run = client.benchmarks().run("benchmarks/fixtures.json", mode="retrieval", k=5)
+print(run.summary.experiments[0].retrieval["hybrid_graph"])
+run = client.benchmarks().run("fixtures", mode="repair", ablations=["full", "no_retry"])
+client.benchmarks().runs()
+client.benchmarks().load(run.manifest.run_id)
+```
+
+`investigate(..., use_graph=False)` and `repair_and_validate(..., features=RepairFeatures(...))`
+expose the ablation flags. The M1 placeholder `benchmark(suite)` method, which
+returned a blocked task record, was replaced by `benchmarks()`. The API
+(`repoagent.api.app.create_app`) accepts an injected `ApiContext` holding the
+client, policy, job queue, job store, and provider.

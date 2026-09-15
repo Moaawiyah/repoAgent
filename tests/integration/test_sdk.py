@@ -43,25 +43,23 @@ def test_repository_methods_preserve_typed_inputs(tmp_path, method):
 
 def test_sdk_and_cli_share_persistent_tasks(tmp_path):
     client = RepoAgent(settings=Settings(data_dir=tmp_path))
-    task = client.benchmark("synthetic")
+    task = client.test(tmp_path)
     result = CliRunner().invoke(
         app, ["--data-dir", str(tmp_path), "tasks", "show", str(task.id), "--json"]
     )
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout) == task.model_dump(mode="json")
     created = CliRunner().invoke(
-        app, ["--data-dir", str(tmp_path), "benchmark", "bugsinpy", "--json"]
+        app, ["--data-dir", str(tmp_path), "test", str(tmp_path), "--json"]
     )
     assert created.exit_code == 3
     another = RepoAgent(settings=Settings(data_dir=tmp_path))
-    assert (
-        another.get_task(json.loads(created.stdout)["id"]).request.suite == "bugsinpy"
-    )
+    assert another.get_task(json.loads(created.stdout)["id"]).request.kind == "test"
 
 
 def test_default_client_respects_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("REPOAGENT_DATA_DIR", str(tmp_path / "data"))
-    task = RepoAgent().benchmark("synthetic")
+    task = RepoAgent().test(tmp_path)
     assert RepoAgent().get_task(task.id) == task
 
 
@@ -70,7 +68,7 @@ def test_storage_errors_are_public_and_sanitized(tmp_path):
     data.write_text("not a directory")
     client = RepoAgent(settings=Settings(data_dir=data))
     with pytest.raises(StorageError) as failure:
-        client.benchmark("synthetic")
+        client.test(tmp_path)
     assert "private-path" not in str(failure.value)
 
 

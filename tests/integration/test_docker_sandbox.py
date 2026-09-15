@@ -78,7 +78,8 @@ def test_baseline_and_patched_validation_in_isolated_container(tmp_path, monkeyp
     assert baseline.tests.passed == 2
     assert patched.passed, patched.summary + patched.execution.commands[0].stdout
     assert patched.comparison.fixed_failures == ["tests/test_app.py::test_normalize"]
-    assert patched.lint is not None and patched.lint.exit_code == 0
+    assert patched.lint is not None and patched.lint.parsed
+    assert not patched.comparison.new_lint
     assert patched.execution.cleaned_up and patched.execution.repository_unchanged
     assert fingerprint(repo) == before and "lower" not in (repo / "app.py").read_text()
     assert not any((tmp_path / "ws").iterdir())

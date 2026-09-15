@@ -58,3 +58,21 @@ def test_provider_failure_is_mapped_to_typed_error(tmp_path):
     service = IndexService(store=RecordingStore(), provider=ExplodingProvider())
     with pytest.raises(EmbeddingProviderError):
         service.index(RepositorySpec(source=str(tmp_path)))
+
+
+def test_rankings_do_not_depend_on_checkout_location(tmp_path):
+    import shutil
+    from pathlib import Path
+
+    from repoagent import RepoAgent, Settings
+
+    fixture = Path(__file__).resolve().parents[1] / "fixtures/rag_repo"
+    orders = []
+    for location in ("a/deep/place", "b"):
+        copy = tmp_path / location / "rag_repo"
+        shutil.copytree(fixture, copy)
+        client = RepoAgent(settings=Settings(data_dir=tmp_path / location / "data"))
+        client.index(copy)
+        response = client.search(copy, "session token", strategy="hybrid", top_k=10)
+        orders.append([(r.chunk.chunk_id, r.rank) for r in response.results])
+    assert orders[0] == orders[1]

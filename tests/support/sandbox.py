@@ -60,6 +60,7 @@ class FakeSandboxRunner:
         self.script = [baseline or execution(pytest_result()), *attempts]
         self.fail_open = fail_open
         self.runs, self.opened, self.closed = [], 0, 0
+        self.overlays = []
         self.plan = self.limits = None
 
     @contextmanager
@@ -72,8 +73,9 @@ class FakeSandboxRunner:
         finally:
             self.closed += 1
 
-    def run(self, commands, unified_diff):
+    def run(self, commands, unified_diff, overlay=None):
         self.runs.append((list(commands), unified_diff))
+        self.overlays.append(overlay)
         if not self.script:
             raise AssertionError("Fake sandbox ran out of scripted executions")
         return self.script.pop(0)

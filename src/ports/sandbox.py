@@ -16,9 +16,16 @@ class SandboxSession(Protocol):
     """Prepared dependencies for one repair; each run gets a fresh workspace."""
 
     def run(
-        self, commands: list[CommandSpec], unified_diff: str | None
+        self,
+        commands: list[CommandSpec],
+        unified_diff: str | None,
+        overlay: dict[str, str] | None = None,
     ) -> SandboxExecution:
-        """Copy the repository, apply ``unified_diff`` if given, run, destroy."""
+        """Copy the repository, apply the diff, write evaluator overlay files, run.
+
+        ``overlay`` is reserved for benchmark evaluators (hidden tests); agents
+        never supply it.
+        """
         ...
 
 

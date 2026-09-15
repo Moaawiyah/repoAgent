@@ -68,11 +68,3 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         """Validate a repository in isolation (unavailable until M7)."""
         submit(ctx, TaskKind.TEST, source, None, commit, json)
-
-    @app.command()
-    def benchmark(ctx: typer.Context, suite: str, json: Json = False) -> None:
-        """Run synthetic, bugsinpy, swe-bench or swe-bench-verified (M9)."""
-        with errors():
-            request = TaskRequest(kind=TaskKind.BENCHMARK, suite=suite)
-            output(client(ctx).submit(request), json)
-        raise typer.Exit(3)

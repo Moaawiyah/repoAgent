@@ -64,6 +64,7 @@ def test_malformed_stage_returns_persisted_failure(tmp_path, stage):
 
     report = run(tmp_path, Malformed())
     assert report.termination_reason == "provider_error"
+    assert f"Invalid structured output for {stage}" in report.error
     assert report.confidence <= 0.6
     assert list((tmp_path / "data/investigations").glob("*.json"))
 
@@ -118,3 +119,25 @@ def test_last_round_cannot_override_insufficient_assessment(tmp_path):
     )
     assert report.termination_reason == "max_iterations"
     assert report.confidence <= 0.6
+
+
+@pytest.mark.parametrize("invalid_only", [False, True])
+def test_unknown_evidence_ids_are_discarded_not_trusted(tmp_path, invalid_only):
+    class Mistyped(FixtureProvider):
+        def complete(self, request):
+            result = super().complete(request)
+            if request.prompt_name != "evidence_assessment":
+                return result
+            payload = json.loads(result.text)
+            fake = {"evidence_id": "ffffffffffffffff", "relevance": "relevant"}
+            kept = [] if invalid_only else payload["assessments"]
+            payload["assessments"] = [*kept, fake]
+            return CompletionResult(text=json.dumps(payload))
+
+    report = run(tmp_path, Mistyped())
+    assert all(e.evidence_id != "ffffffffffffffff" for e in report.evidence)
+    if invalid_only:
+        assert report.termination_reason == "provider_error"
+    else:
+        assert report.termination_reason == "confident_root_cause"
+        assert any("discarded 1 unknown" in t.rationale for t in report.trace)

@@ -10,3 +10,6 @@ coverage.json
 dist/
 *.egg-info/
 build/
+
+# Generated benchmark suites and dataset exports (M8)
+benchmarks/generated/

@@ -14,7 +14,7 @@ from repoagent.domain.sandbox import (
     SandboxOutcome,
 )
 from repoagent.sandbox.docker_args import DockerCommandBuilder
-from repoagent.sandbox.patching import WorkspacePatcher
+from repoagent.sandbox.patching import WorkspacePatcher, write_overlay
 from repoagent.sandbox.process import ProcessRunner
 from repoagent.sandbox.workspace import Workspace, WorkspaceManager, fingerprint
 from repoagent.validation.policy import CommandPolicy
@@ -39,7 +39,10 @@ class DockerSession:
         self._workspaces, self._policy = workspaces, policy
 
     def run(
-        self, commands: list[CommandSpec], unified_diff: str | None
+        self,
+        commands: list[CommandSpec],
+        unified_diff: str | None,
+        overlay: dict[str, str] | None = None,
     ) -> SandboxExecution:
         argvs = [self._policy.argv(spec) for spec in commands]
         start, before = time.monotonic(), fingerprint(self._repository)
@@ -53,6 +56,8 @@ class DockerSession:
         try:
             if unified_diff is not None:
                 WorkspacePatcher().apply(workspace.path, unified_diff)
+            if overlay:
+                write_overlay(workspace.path, overlay)
             for spec, argv in zip(commands, argvs, strict=True):
                 result = self._execute(spec, argv, workspace)
                 results.append(result)

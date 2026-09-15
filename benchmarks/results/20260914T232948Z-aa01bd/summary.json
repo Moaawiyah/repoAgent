@@ -1,0 +1,55 @@
+{
+  "run_id": "20260914T232948Z-aa01bd",
+  "suite": "fixtures",
+  "experiments": [
+    {
+      "experiment": "full",
+      "mode": "retrieval",
+      "tasks_attempted": 6,
+      "successes": 0,
+      "success_rate": null,
+      "validated_repairs": 0,
+      "hidden_tests_resolved": 0,
+      "localization_measured": 0,
+      "file_localization": null,
+      "symbol_localization": null,
+      "k": 10,
+      "retrieval": {
+        "bm25": {
+          "recall_at_k": 1.0,
+          "mrr": 0.7,
+          "hit_at_k": 1.0
+        },
+        "hybrid": {
+          "recall_at_k": 1.0,
+          "mrr": 0.6222,
+          "hit_at_k": 1.0
+        },
+        "hybrid_graph": {
+          "recall_at_k": 1.0,
+          "mrr": 0.7222,
+          "hit_at_k": 1.0
+        },
+        "vector": {
+          "recall_at_k": 1.0,
+          "mrr": 0.5155,
+          "hit_at_k": 1.0
+        }
+      },
+      "avg_attempts": null,
+      "avg_retrieval_calls": null,
+      "avg_llm_calls": null,
+      "avg_input_tokens": null,
+      "avg_output_tokens": null,
+      "avg_prompt_chars": null,
+      "avg_duration_seconds": 0.0063,
+      "files_changed": 0,
+      "lines_added": 0,
+      "lines_removed": 0,
+      "timeouts": 0,
+      "sandbox_failures": 0,
+      "patch_failures": 0,
+      "failures": {}
+    }
+  ]
+}

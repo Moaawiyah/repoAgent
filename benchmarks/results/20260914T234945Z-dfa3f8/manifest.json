@@ -1,0 +1,65 @@
+{
+  "run_id": "20260914T234945Z-dfa3f8",
+  "suite": "fixtures",
+  "suite_source": "RepoAgent tests/fixtures (synthetic)",
+  "suite_sha256": "16b6b51460236ff968d6bcb50ff1cbd885beea33792b8cbc437e540ee20c8f57",
+  "task_ids": [
+    "auth-uppercase-email",
+    "inventory-bug",
+    "slugify-bug",
+    "pagination-bug",
+    "config-bug",
+    "cache-bug"
+  ],
+  "experiments": [
+    {
+      "name": "full",
+      "mode": "investigate",
+      "features": {
+        "graph_retrieval": true,
+        "reviewer": true,
+        "single_retrieval_pass": false,
+        "failure_retry": true
+      },
+      "k": 5,
+      "strategies": [
+        "bm25",
+        "vector",
+        "hybrid",
+        "hybrid_graph"
+      ],
+      "max_attempts": 3,
+      "timeout_seconds": 300
+    },
+    {
+      "name": "no_graph",
+      "mode": "investigate",
+      "features": {
+        "graph_retrieval": false,
+        "reviewer": true,
+        "single_retrieval_pass": false,
+        "failure_retry": true
+      },
+      "k": 5,
+      "strategies": [
+        "bm25",
+        "vector",
+        "hybrid",
+        "hybrid_graph"
+      ],
+      "max_attempts": 3,
+      "timeout_seconds": 300
+    }
+  ],
+  "repoagent_version": "0.1.0",
+  "repoagent_commit": "39f0e56ab432872c29ca3c5bfd865134c9973119",
+  "repoagent_dirty": true,
+  "llm_provider": "groq",
+  "llm_model": "openai/gpt-oss-20b",
+  "embedding": "hashing:256",
+  "sandbox_image": "python:3.12-slim",
+  "python": "3.13.0",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "started_at": "2026-09-14T23:49:45.477642Z",
+  "finished_at": "2026-09-15T00:04:48.264124Z"
+}

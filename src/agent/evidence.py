@@ -54,12 +54,16 @@ class EvidenceNodes:
             assessment, usage = generate(
                 state, self._provider, "evidence_assessment", EvidenceAssessment
             )
-        except LLMError:
-            return failure(state, "evidence_assessed")
+        except LLMError as error:
+            return failure(state, "evidence_assessed", str(error))
         known = {e.evidence_id for e in state.evidence}
-        if any(a.evidence_id not in known for a in assessment.assessments):
+        # Citations of unknown IDs are discarded, never attached to evidence;
+        # the stage fails only when no assessment references supplied evidence.
+        valid = [a for a in assessment.assessments if a.evidence_id in known]
+        discarded = len(assessment.assessments) - len(valid)
+        if assessment.assessments and not valid:
             return {**failure(state, "evidence_assessed"), "usage": usage}
-        verdicts = {a.evidence_id: a for a in assessment.assessments}
+        verdicts = {a.evidence_id: a for a in valid}
         items = []
         for item in state.evidence:
             verdict = verdicts.get(item.evidence_id)
@@ -82,6 +86,13 @@ class EvidenceNodes:
                 state,
                 "evidence_assessed",
                 "enough" if supported and assessment.enough_evidence else "need_more",
-                "; ".join(assessment.unknowns),
+                "; ".join(
+                    [*assessment.unknowns]
+                    + (
+                        [f"discarded {discarded} unknown evidence IDs"]
+                        if discarded
+                        else []
+                    )
+                ),
             ),
         }

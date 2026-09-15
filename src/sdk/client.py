@@ -17,13 +17,14 @@ from repoagent.ports.task_store import TaskStore
 from repoagent.retrieval.embeddings import EmbeddingProvider
 from repoagent.retrieval.models import RetrievalStrategy, SearchResponse
 from repoagent.retrieval.persistence import IndexSummary
+from repoagent.sdk.benchmark_capability import BenchmarkCapability
 from repoagent.sdk.investigation import InvestigationApi
 from repoagent.sdk.repair_capability import RepairCapability
 from repoagent.sdk.retrieval import RetrievalApi
 from repoagent.sdk.tasks import TaskApi
 
 
-class RepoAgent(RepairCapability):
+class RepoAgent(RepairCapability, BenchmarkCapability):
     """Lazy SDK client composing an application service and replaceable stores.
 
     Construction performs no I/O and returns typed domain objects; no log
@@ -110,10 +111,16 @@ class RepoAgent(RepairCapability):
         max_iterations: int | None = None,
         top_k: int = 5,
         provider: LLMProvider | None = None,
+        use_graph: bool = True,
     ) -> InvestigationReport:
         api = InvestigationApi(self._settings or Settings(), self.retrieval())
         return api.investigate(
-            source, issue, max_iterations=max_iterations, top_k=top_k, provider=provider
+            source,
+            issue,
+            max_iterations=max_iterations,
+            top_k=top_k,
+            provider=provider,
+            use_graph=use_graph,
         )
 
     def analyze(
@@ -138,7 +145,3 @@ class RepoAgent(RepairCapability):
     def test(self, source: str | Path, *, commit: str | None = None) -> TaskRecord:
         """Request isolated validation (blocked until M7)."""
         return self._tasks.repository_task(TaskKind.TEST, source, commit)
-
-    def benchmark(self, suite: str) -> TaskRecord:
-        """Request a benchmark run (blocked until M9)."""
-        return self.submit(TaskRequest(kind=TaskKind.BENCHMARK, suite=suite))

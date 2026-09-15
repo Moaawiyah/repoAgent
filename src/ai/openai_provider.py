@@ -2,6 +2,7 @@
 
 from repoagent.ai.chat import arguments, completion
 from repoagent.ai.provider import CompletionRequest, CompletionResult, LLMProvider
+from repoagent.ai.rate_limit import RateLimitRetry
 from repoagent.config import Settings
 from repoagent.domain.errors import LLMError
 
@@ -15,7 +16,7 @@ class OpenAIChatProvider:
         self._settings = settings
 
     def complete(self, request: CompletionRequest) -> CompletionResult:
-        from openai import APIError, OpenAI
+        from openai import APIError, OpenAI, RateLimitError
 
         settings = self._settings
         try:
@@ -25,11 +26,18 @@ class OpenAIChatProvider:
                 timeout=settings.llm_timeout,
                 max_retries=0,
             ) as client:
-                response = client.chat.completions.create(
-                    **arguments(
-                        request, settings.llm_model, settings.llm_max_output_tokens
-                    )
+                payload = arguments(
+                    request, settings.llm_model, settings.llm_max_output_tokens
                 )
+                response = RateLimitRetry(
+                    settings.llm_rate_limit_retries, settings.llm_rate_limit_max_wait
+                ).call(
+                    lambda: client.chat.completions.create(**payload), RateLimitError
+                )
+        except RateLimitError:
+            raise LLMError(
+                "OpenAI rate limit or quota not recovered within the retry budget"
+            ) from None
         except APIError:
             raise LLMError(
                 "OpenAI request failed; check configuration and rate limits"

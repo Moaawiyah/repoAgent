@@ -16,8 +16,8 @@ class DiscoveryNodes:
             analysis, usage = generate(
                 state, self._provider, "issue_analysis", IssueAnalysis
             )
-        except LLMError:
-            return failure(state, "issue_analyzed")
+        except LLMError as error:
+            return failure(state, "issue_analyzed", str(error))
         return {
             "issue_analysis": analysis,
             "usage": usage,
@@ -27,8 +27,8 @@ class DiscoveryNodes:
     def plan_search(self, state: InvestigationState) -> dict:
         try:
             plan, usage = generate(state, self._provider, "search_plan", SearchPlan)
-        except LLMError:
-            return failure(state, "search_planned")
+        except LLMError as error:
+            return failure(state, "search_planned", str(error))
         queries = fresh_queries(state, plan.queries)
         return {
             "pending_queries": queries,

@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     investigation_context_chars: int = Field(default=12000, ge=1000, le=16000)
     llm_timeout: int = Field(default=60, ge=1, le=300)
     llm_max_output_tokens: int = Field(default=2000, ge=128, le=8000)
+    llm_rate_limit_retries: int = Field(default=4, ge=0, le=10)
+    llm_rate_limit_max_wait: int = Field(default=60, ge=1, le=300)
+    llm_tokens_per_minute: int | None = Field(default=None, ge=100, le=10_000_000)
+    llm_requests_per_minute: int | None = Field(default=None, ge=1, le=100_000)
     repair_max_revisions: int = Field(default=2, ge=0, le=5)
     repair_max_attempts: int = Field(default=3, ge=1, le=10)
     repair_max_reinvestigations: int = Field(default=1, ge=0, le=3)
@@ -44,6 +48,10 @@ class Settings(BaseSettings):
         default_factory=lambda: ["pytest", "ruff_check"]
     )
     sandbox_workspace_dir: Path | None = None
+    api_allowed_roots: list[Path] = Field(default_factory=list)
+    api_execution_repositories: list[Path] = Field(default_factory=list)
+    api_token: SecretStr | None = None
+    api_max_workers: int = Field(default=1, ge=1, le=8)
 
     @field_validator("data_dir")
     @classmethod

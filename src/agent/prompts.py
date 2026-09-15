@@ -35,17 +35,34 @@ TASKS = {
 }
 
 
+PROMPT_FIELDS = ("evidence_id", "file_path", "qualified_name", "start_line")
+PROMPT_FIELDS += ("end_line", "retrieval_source", "relevance", "reason")
+
+
 def context(state: InvestigationState, task: str) -> str:
-    """Bound snippets and preserve provenance without dumping the repository."""
+    """Bound snippets and preserve provenance without dumping the repository.
+
+    Internal identifiers (chunk/repository IDs, ranks, originating queries) are
+    omitted; graph paths are sent as compact ``a -relation-> b`` strings.
+    """
     quota = state.limits.context_chars // max(1, len(state.evidence))
     evidence = []
     for item in state.evidence:
-        entry = item.model_dump(mode="json")
+        entry = {
+            field: value
+            for field in PROMPT_FIELDS
+            if (value := getattr(item, field)) is not None
+        }
         entry["snippet"] = item.snippet[:quota]
         entry["snippet_truncated"] = len(item.snippet) > quota
+        if item.graph_path:
+            entry["graph_path"] = [
+                f"{hop.source_symbol} -{hop.relation}-> {hop.target_symbol}"
+                for hop in item.graph_path
+            ]
         evidence.append(entry)
     payload = {
-        "issue": state.issue.model_dump(mode="json"),
+        "issue": state.issue.model_dump(mode="json", exclude_none=True),
         "analysis": state.issue_analysis.model_dump() if state.issue_analysis else None,
         "evidence": evidence,
         "hypotheses": [h.model_dump(mode="json") for h in state.hypotheses],

@@ -21,15 +21,23 @@ _PROPOSAL_FAILURES = {
 
 
 class RevisionNodes:
-    def __init__(self, provider: LLMProvider, reinvestigate: Reinvestigator) -> None:
-        self._provider = provider
+    def __init__(
+        self,
+        provider: LLMProvider,
+        reinvestigate: Reinvestigator,
+        reviewer: bool = True,
+    ) -> None:
+        self._provider, self._reviewer = provider, reviewer
         self._analyzer = FailureAnalyzerAgent(provider)
         self._reinvestigate = reinvestigate
 
     def propose(self, state: ExecutionRepairState) -> dict:
         """Reuse the complete M6 Developer → static validator → Reviewer graph."""
         agent = RepairAgent(
-            state.repository, self._provider, state.limits.max_revisions
+            state.repository,
+            self._provider,
+            state.limits.max_revisions,
+            reviewer=self._reviewer,
         )
         report = agent.run(state.investigation, state.runtime)
         status = _PROPOSAL_FAILURES.get(report.status)

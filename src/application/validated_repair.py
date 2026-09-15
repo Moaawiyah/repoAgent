@@ -15,20 +15,18 @@ from repoagent.agent.execution_state import RepairLoopLimits
 from repoagent.ai.counting import CountingProvider
 from repoagent.ai.provider import LLMProvider, require_provider
 from repoagent.application.investigation import InvestigateRequest, InvestigationService
+from repoagent.application.repair_outcomes import early_report
 from repoagent.application.searching import SearchService
 from repoagent.domain.errors import SandboxError
+from repoagent.domain.features import RepairFeatures
 from repoagent.domain.investigation import (
     InvestigationLimits,
     InvestigationReport,
     Issue,
     TerminationReason,
 )
-from repoagent.domain.repair_execution import (
-    ExecutionStatus,
-    RepairMetrics,
-    ValidatedRepairReport,
-)
-from repoagent.domain.sandbox import CommandKind, SandboxLimits, ValidationPlan
+from repoagent.domain.repair_execution import ValidatedRepairReport
+from repoagent.domain.sandbox import CommandKind, SandboxLimits
 from repoagent.ports.index_store import IndexStore
 from repoagent.ports.sandbox import SandboxRunner
 from repoagent.retrieval.embeddings import EmbeddingProvider
@@ -43,6 +41,7 @@ class ValidatedRepairRequest(BaseModel):
     issue: Issue
     loop: RepairLoopLimits = RepairLoopLimits()
     sandbox: SandboxLimits = SandboxLimits()
+    features: RepairFeatures = RepairFeatures()
 
     @field_validator("issue", mode="before")
     @classmethod
@@ -71,12 +70,24 @@ class ValidatedRepairService:
         task_id = uuid4().hex
         plan = ProjectDetector(request.sandbox).detect(root)
         if not plan.has(CommandKind.PYTEST):
-            return self._early(task_id, request, plan, provider, None)
+            return early_report(task_id, request.repository, plan, provider, None)
+
+        features = request.features
+        loop = request.loop
+        if not features.failure_retry:
+            loop = loop.model_copy(
+                update={"max_attempts": 1, "max_reinvestigations": 0}
+            )
 
         def investigate(issue: Issue) -> InvestigationReport:
             service = InvestigationService(self._store, self._embedding, provider)
             return service.investigate(
-                InvestigateRequest(repository=request.repository, issue=issue),
+                InvestigateRequest(
+                    repository=request.repository,
+                    issue=issue,
+                    use_graph=features.graph_retrieval,
+                    max_iterations=1 if features.single_retrieval_pass else None,
+                ),
                 self._limits,
             )
 
@@ -86,9 +97,11 @@ class ValidatedRepairService:
                 investigation = investigate(request.issue)
                 reason = investigation.termination_reason
                 if reason != TerminationReason.CONFIDENT_ROOT_CAUSE:
-                    return self._early(task_id, request, plan, provider, investigation)
+                    return early_report(
+                        task_id, request.repository, plan, provider, investigation
+                    )
                 agent = ExecutionRepairAgent(
-                    provider, session, investigate, request.loop
+                    provider, session, investigate, loop, features.reviewer
                 )
                 return agent.run(task_id, investigation, plan)
         except SandboxError as error:
@@ -96,43 +109,6 @@ class ValidatedRepairService:
                 "Sandbox failed",
                 extra={"event": "sandbox_failed", "task_id": task_id},
             )
-            return self._early(
-                task_id, request, plan, provider, investigation, str(error)
+            return early_report(
+                task_id, request.repository, plan, provider, investigation, str(error)
             )
-
-    @staticmethod
-    def _early(
-        task_id: str,
-        request: ValidatedRepairRequest,
-        plan: ValidationPlan,
-        provider: CountingProvider,
-        investigation: InvestigationReport | None,
-        sandbox_error: str | None = None,
-    ) -> ValidatedRepairReport:
-        if sandbox_error is not None:
-            status, error = ExecutionStatus.SANDBOX_FAILED, sandbox_error
-        elif investigation is None:
-            status = ExecutionStatus.VALIDATION_UNAVAILABLE
-            error = "No runnable pytest validation was detected; cannot validate."
-        elif investigation.termination_reason == TerminationReason.PROVIDER_ERROR:
-            status = ExecutionStatus.PROVIDER_ERROR
-            error = investigation.error or "Investigator provider failed"
-        else:
-            status = ExecutionStatus.INSUFFICIENT_EVIDENCE
-            error = (
-                "No patch proposed because investigation lacks a confident root cause."
-            )
-        return ValidatedRepairReport(
-            task_id=task_id,
-            repository=request.repository,
-            status=status,
-            investigation=investigation,
-            plan=plan,
-            metrics=RepairMetrics(
-                llm_calls=provider.calls,
-                retrieval_calls=investigation.tool_calls if investigation else 0,
-                investigations=int(investigation is not None),
-                final_status=status,
-            ),
-            error=error[:1000],
-        )

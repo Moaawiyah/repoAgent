@@ -17,8 +17,8 @@ class EvaluationNode:
             decision, usage = generate(
                 state, self._provider, "investigation_decision", InvestigationDecision
             )
-        except LLMError:
-            return failure(state, "hypothesis_evaluated")
+        except LLMError as error:
+            return failure(state, "hypothesis_evaluated", str(error))
         known = {h.hypothesis_id for h in state.hypotheses}
         if any(e.hypothesis_id not in known for e in decision.evaluations) or (
             decision.primary_hypothesis_id is not None

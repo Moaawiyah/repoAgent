@@ -1,0 +1,18 @@
+:root { font-family: system-ui, sans-serif; color: #1d2330; background: #f5f6f8; }
+main { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+.panel { background: #fff; border: 1px solid #dfe3ea; border-radius: 8px; padding: 16px; margin: 16px 0; }
+label { display: block; margin-bottom: 12px; font-weight: 600; }
+label.inline { font-weight: 400; }
+input:not([type="checkbox"]), textarea { display: block; width: 100%; margin-top: 4px; padding: 8px; box-sizing: border-box; font: inherit; }
+.actions button { margin-right: 8px; padding: 8px 16px; }
+.timeline { list-style: none; padding: 0; }
+.timeline li { display: grid; grid-template-columns: 24px 220px 1fr; gap: 8px; padding: 4px 0; }
+.done, .done .icon { color: #1a7f37; }
+.failed, .failed .icon { color: #cf222e; }
+.running .icon { color: #9a6700; }
+small, .muted { color: #57606a; }
+.error { color: #cf222e; }
+pre { background: #f6f8fa; padding: 8px; overflow-x: auto; font-size: 12px; }
+.diff { white-space: pre; }
+table { width: 100%; border-collapse: collapse; }
+td, th { border-top: 1px solid #dfe3ea; padding: 6px; text-align: left; vertical-align: top; }

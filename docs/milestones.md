@@ -1,6 +1,6 @@
 # Milestone implementation roadmap
 
-M1–M7 are implemented, with delivered limitations recorded below. Complete and validate each milestone before
+M1–M8 are implemented, with delivered limitations recorded below. Complete and validate each milestone before
 advancing. All development gates: passing pytest, Ruff lint/format, >85%
 statement coverage, and <=150 physical lines per Python file. Use meaningful
 unit/integration tests.
@@ -125,3 +125,29 @@ Developer revision retries, bounded Investigator re-entry, per-repair metrics, a
 persisted attempt histories. By explicit request, the bounded retry loop and attempt
 persistence listed under M8 above were delivered in M7. Benchmark adapters and
 strategy comparisons remain future work; see the README for isolation limitations.
+
+## M8 delivered
+
+By explicit request, M8 combined benchmarking, evaluation, and productization
+(the M9 and M10 rows above). Delivered:
+
+- a benchmark task and suite format with fixture, BugsInPy, and SWE-bench
+  adapters, and pinned-commit materialization;
+- retrieval, investigate, and repair modes, ablation flags, and hidden-test
+  evaluation;
+- JSONL results with reproducibility manifests, a failure taxonomy, metrics
+  summaries, and `benchmark`, `benchmark-report`, and `benchmark-import`;
+- token accounting and focused prompt contexts;
+- a FastAPI service with a local job queue and security policy, plus
+  `repoagent serve`;
+- a React/TypeScript dashboard.
+
+Measured results and methodology are in [benchmarks](benchmarks.md).
+
+Not delivered or not measured:
+
+- live-model repair and localization results;
+- repair execution for BugsInPy and SWE-bench (per-project environments are
+  not built);
+- durable job infrastructure, authentication beyond a shared bearer token, and
+  deployment.

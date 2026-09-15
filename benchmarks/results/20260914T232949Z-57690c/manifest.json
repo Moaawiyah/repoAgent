@@ -1,0 +1,50 @@
+{
+  "run_id": "20260914T232949Z-57690c",
+  "suite": "bugsinpy",
+  "suite_source": "soarsmu/BugsInPy (local checkout)",
+  "suite_sha256": "1ce92c4966b1aee16b09bbc807acd58d8d7540485ac9f04a632d8547645294b9",
+  "task_ids": [
+    "PySnooper-1",
+    "PySnooper-2",
+    "PySnooper-3",
+    "httpie-1",
+    "httpie-2",
+    "cookiecutter-1",
+    "cookiecutter-2",
+    "tqdm-1",
+    "tqdm-2",
+    "thefuck-1"
+  ],
+  "experiments": [
+    {
+      "name": "full",
+      "mode": "retrieval",
+      "features": {
+        "graph_retrieval": true,
+        "reviewer": true,
+        "single_retrieval_pass": false,
+        "failure_retry": true
+      },
+      "k": 10,
+      "strategies": [
+        "bm25",
+        "vector",
+        "hybrid",
+        "hybrid_graph"
+      ],
+      "max_attempts": 3,
+      "timeout_seconds": 300
+    }
+  ],
+  "repoagent_version": "0.1.0",
+  "repoagent_commit": "39f0e56ab432872c29ca3c5bfd865134c9973119",
+  "repoagent_dirty": true,
+  "llm_provider": "none",
+  "llm_model": "",
+  "embedding": "hashing:256",
+  "sandbox_image": "python:3.12-slim",
+  "python": "3.13.0",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "started_at": "2026-09-14T23:29:49.389180Z",
+  "finished_at": "2026-09-14T23:29:53.163930Z"
+}

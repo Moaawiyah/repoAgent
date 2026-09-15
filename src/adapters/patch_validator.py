@@ -1,8 +1,8 @@
 """Validate and apply a constrained unified diff only in memory."""
 
-import ast
 from pathlib import Path, PurePosixPath
 
+from repoagent.analysis.python_ast import parse_untrusted
 from repoagent.domain.repair import StaticValidation
 
 MAX_FILES, MAX_CHANGED_LINES = 10, 400
@@ -37,7 +37,7 @@ class StaticPatchValidator:
             if changed > MAX_CHANGED_LINES:
                 raise ValueError("Patch changes too many lines")
             if path.endswith(".py"):
-                ast.parse(after, filename=path)
+                parse_untrusted(after, path)
             patched[path] = after
         return patched, changed
 
