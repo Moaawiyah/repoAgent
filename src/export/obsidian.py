@@ -14,9 +14,9 @@ from pydantic import BaseModel, ConfigDict
 from repoagent.domain.errors import ExportError
 from repoagent.export.notes import (
     FOLDERS_BY_TYPE,
+    build_filenames,
     render_note,
     render_repository_note,
-    safe_name,
 )
 from repoagent.graph.models import GraphNode, GraphSnapshot
 
@@ -53,10 +53,11 @@ class ObsidianExporter:
             )
         vault.mkdir(parents=True, exist_ok=True)
         nodes = {node.node_id: node for node in graph.nodes}
+        filenames = build_filenames(graph.nodes)
         outgoing, incoming = _adjacency(graph)
         notes = 0
         for node in graph.nodes:
-            target = self._note_path(vault, node)
+            target = self._note_path(vault, node, filenames)
             target.write_text(
                 render_note(
                     node,
@@ -64,12 +65,13 @@ class ObsidianExporter:
                     outgoing[node.node_id],
                     incoming[node.node_id],
                     self._root,
+                    filenames,
                 ),
                 encoding="utf-8",
             )
             notes += 1
         (vault / "Repository.md").write_text(
-            render_repository_note(graph, nodes), encoding="utf-8"
+            render_repository_note(graph, nodes, filenames), encoding="utf-8"
         )
         logging.getLogger(__name__).info(
             "Obsidian export completed", extra={"event": "obsidian_exported"}
@@ -82,9 +84,11 @@ class ObsidianExporter:
             edge_count=len(graph.edges),
         )
 
-    def _note_path(self, vault: Path, node: GraphNode) -> Path:
+    def _note_path(
+        self, vault: Path, node: GraphNode, filenames: dict[str, str]
+    ) -> Path:
         folder = FOLDERS_BY_TYPE[node.node_type]
-        target = vault / folder / f"{safe_name(node.node_id)}.md"
+        target = vault / folder / f"{filenames[node.node_id]}.md"
         if not target.resolve().is_relative_to(vault):
             raise ExportError("Note path escapes the vault directory")
         target.parent.mkdir(parents=True, exist_ok=True)

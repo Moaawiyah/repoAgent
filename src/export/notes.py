@@ -26,10 +26,28 @@ def safe_name(qualified: str) -> str:
     return _UNSAFE.sub("_", qualified).strip(".") or "unnamed"
 
 
-def link(node_id: str, nodes: dict[str, GraphNode]) -> str:
+def build_filenames(nodes: list[GraphNode]) -> dict[str, str]:
+    """Assign each node a vault-unique filename stem, deterministically.
+
+    ``nodes`` must already be in stable order (``GraphSnapshot`` sorts by
+    node ID). Distinct node IDs that sanitize to the same name are kept
+    distinct with a deterministic ``-2``, ``-3``, ... suffix instead of
+    silently overwriting one another's note.
+    """
+    used: dict[str, int] = {}
+    filenames: dict[str, str] = {}
+    for node in nodes:
+        base = safe_name(node.node_id)
+        count = used.get(base, 0) + 1
+        used[base] = count
+        filenames[node.node_id] = base if count == 1 else f"{base}-{count}"
+    return filenames
+
+
+def link(node_id: str, nodes: dict[str, GraphNode], filenames: dict[str, str]) -> str:
     """Wikilink to existing notes; unresolved names stay inline code."""
     if node_id in nodes:
-        return f"[[{safe_name(node_id)}]]"
+        return f"[[{filenames[node_id]}]]"
     return f"`{node_id}`"
 
 
@@ -39,9 +57,10 @@ def render_note(
     outgoing: list,
     incoming: list,
     root: Path,
+    filenames: dict[str, str],
 ) -> str:
     """Render one symbol note with metadata, relationships, and source."""
-    parent = link(node.parent, nodes) if node.parent else "-"
+    parent = link(node.parent, nodes, filenames) if node.parent else "-"
     lines = [
         f"# {node.node_id}",
         "",
@@ -50,7 +69,7 @@ def render_note(
         f"**Lines:** {node.start_line}-{node.end_line}  ",
         f"**Parent:** {parent}",
     ]
-    sections = _sections(outgoing, incoming, nodes)
+    sections = _sections(outgoing, incoming, nodes, filenames)
     if sections:
         lines.extend(["", "## Relationships", *sections])
     block = source_block(root, node)
@@ -59,13 +78,18 @@ def render_note(
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _sections(outgoing: list, incoming: list, nodes: dict[str, GraphNode]) -> list[str]:
+def _sections(
+    outgoing: list,
+    incoming: list,
+    nodes: dict[str, GraphNode],
+    filenames: dict[str, str],
+) -> list[str]:
     lines: list[str] = []
     for edge_type in EdgeType:
         for edges, direction in ((outgoing, 0), (incoming, 1)):
             label = _RELATION_LABELS[edge_type][direction]
             targets = [
-                link(edge.target if direction == 0 else edge.source, nodes)
+                link(edge.target if direction == 0 else edge.source, nodes, filenames)
                 if edge.resolved
                 else f"`{edge.target if direction == 0 else edge.source}`"
                 for edge in edges
@@ -91,7 +115,9 @@ def source_block(root: Path, node: GraphNode) -> str | None:
     return f"{fence}python\n{chunk}\n{fence}"
 
 
-def render_repository_note(graph: GraphSnapshot, nodes: dict[str, GraphNode]) -> str:
+def render_repository_note(
+    graph: GraphSnapshot, nodes: dict[str, GraphNode], filenames: dict[str, str]
+) -> str:
     """Render the vault entry note with counts and module links."""
     node_counts = {node_type.value: 0 for node_type in NodeType}
     edge_counts = {edge_type.value: 0 for edge_type in EdgeType}
@@ -113,5 +139,5 @@ def render_repository_note(graph: GraphSnapshot, nodes: dict[str, GraphNode]) ->
     lines.extend(["", "## Edge types", ""])
     lines.extend(f"- {name}: {count}" for name, count in edge_counts.items())
     lines.extend(["", "## Modules", ""])
-    lines.extend(f"- [[{safe_name(node.node_id)}]]" for node in modules)
+    lines.extend(f"- [[{filenames[node.node_id]}]]" for node in modules)
     return "\n".join(lines) + "\n"

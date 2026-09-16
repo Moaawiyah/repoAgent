@@ -136,6 +136,31 @@ ones, and injection-safe source fences). It never deletes files and requires
 `--overwrite` to export into a non-empty directory. Obsidian itself is never
 required.
 
+### `graphify`: graph.json and Obsidian from one build
+
+```sh
+uv run repoagent graphify ./some-python-project --artifacts artifacts
+uv run repoagent graphify ./some-python-project \
+  --output artifacts/graph.json \
+  --obsidian artifacts/vault
+uv run repoagent graphify ./some-python-project --json
+```
+
+`graphify` analyzes and builds the graph exactly once, then writes whichever
+outputs you ask for: `--output` persists a versioned `graph.json`
+(`schema_version`, `repository`, `nodes`, `edges`, and `metadata` —
+file/symbol/relationship counts), and `--obsidian` writes the same vault
+`export-obsidian` produces. `--artifacts <dir>` fills in whichever of those
+two is left unset as `<dir>/<repository name>/{graph.json,vault}` — run it
+repeatedly against different repositories and each gets its own
+subdirectory instead of overwriting the last run's output; `--output`/
+`--obsidian` still win when given explicitly. `graph.json` round-trips through
+`repoagent.graph.serializer.read_graph_json` without re-analyzing the
+repository, so it can seed the graph for other tools. `graph`,
+`export-obsidian`, and `hybrid_graph` retrieval are unchanged and still work
+standalone; `graphify` only adds a combined, persistent entry point around
+the same `RepositoryGraphBuilder`/`GraphSnapshot`.
+
 ## Investigator (M5)
 
 The Investigator runs a real stateful LangGraph workflow:

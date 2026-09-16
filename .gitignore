@@ -13,3 +13,6 @@ build/
 
 # Generated benchmark suites and dataset exports (M8)
 benchmarks/generated/
+
+# Generated graphify output (graph.json / Obsidian vault)
+artifacts/

@@ -12,6 +12,7 @@ from repoagent import RepoAgent
 from repoagent.analysis.render import render_analysis
 from repoagent.analysis.results import RepositoryAnalysis
 from repoagent.cli.execution_render import render_validated_repair
+from repoagent.cli.graphify_render import render_graphify
 from repoagent.cli.investigation_render import render_investigation
 from repoagent.cli.render import (
     render_evaluation,
@@ -31,6 +32,7 @@ from repoagent.domain.tasks import TaskEvent, TaskRecord
 from repoagent.evaluation.models import EvaluationReport
 from repoagent.export.obsidian import ExportSummary
 from repoagent.graph.models import GraphInspection, GraphSummary
+from repoagent.graph.serializer import GraphifyResult
 from repoagent.logging import configure_logging
 from repoagent.retrieval.models import SearchResponse
 from repoagent.retrieval.persistence import IndexSummary
@@ -78,6 +80,7 @@ def output(
     | EvaluationReport
     | GraphSummary
     | GraphInspection
+    | GraphifyResult
     | ExportSummary
     | InvestigationReport
     | RepairReport
@@ -100,6 +103,7 @@ def output(
         (EvaluationReport, render_evaluation),
         (GraphSummary, render_graph_summary),
         (GraphInspection, render_graph_inspection),
+        (GraphifyResult, render_graphify),
         (ExportSummary, render_export),
         (InvestigationReport, render_investigation),
         (RepairReport, render_repair),

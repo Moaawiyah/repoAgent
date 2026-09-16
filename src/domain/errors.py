@@ -41,6 +41,10 @@ class ExportError(RepoAgentError):
     """A graph export could not be written safely."""
 
 
+class GraphError(RepoAgentError):
+    """A persisted graph document is missing, malformed, or incompatible."""
+
+
 class LLMError(RepoAgentError):
     """A language-model provider is unavailable or misconfigured."""
 

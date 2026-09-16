@@ -63,7 +63,7 @@ Groq/OpenAI providers, the Docker sandbox, and the job queue. See
 | M1 | Package, validated settings, SQLite task store, CLI, SDK facade |
 | M2 | Ignore-aware, symlink-safe discovery and Python AST analysis (symbols, imports, relationships) |
 | M3 | Structure-aware chunking, BM25, hashing embeddings, vector store, reciprocal-rank fusion, reranking, retrieval evaluation |
-| M4 | Code knowledge graph (defines, contains, imports, inherits, calls), bounded expansion, `hybrid_graph` retrieval, Obsidian export |
+| M4 | Code knowledge graph (defines, contains, imports, inherits, calls), bounded expansion, `hybrid_graph` retrieval, Obsidian export, `graphify` graph.json persistence |
 | M5 | LangGraph Investigator: evidence assessment, hypotheses and challenge loop, Groq and OpenAI adapters |
 | M6 | Developer, static patch validator, and Reviewer graph producing minimal unified diffs |
 | M7 | Docker sandbox, allowlisted commands, baseline/patched pytest and Ruff, failure analysis, bounded retries |
@@ -104,6 +104,7 @@ uv run repoagent analyze ./project
 uv run repoagent index ./project
 uv run repoagent search ./project "where are sessions refreshed" --strategy hybrid_graph
 uv run repoagent graph ./project --symbol "pkg.module.Class.method"
+uv run repoagent graphify ./project --artifacts artifacts   # writes artifacts/project/{graph.json,vault}
 uv run repoagent --env-file .env investigate ./project "Uppercase emails cannot log in"
 uv run repoagent --env-file .env repair ./project "Uppercase emails cannot log in"            # static proposal
 uv run repoagent --env-file .env repair ./project "Uppercase emails cannot log in" --execute  # Docker-validated
@@ -173,7 +174,9 @@ The graph has module, class, function, and method nodes with typed
 conservative: ambiguous calls are marked `resolved: false` instead of guessed.
 The same graph feeds retrieval, the Obsidian exporter, and the API/dashboard
 neighborhood view (`GET /api/graph`). There is no separate graph system for
-visualization.
+visualization. `repoagent graphify` builds this graph once and persists it as
+a versioned `graph.json` and/or an Obsidian vault in a single command; `graph`
+and `export-obsidian` remain available unchanged for inspection-only use.
 
 ## LangGraph workflows
 

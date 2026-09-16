@@ -13,7 +13,18 @@ flowchart LR
   Expander --> HGR
   HGR --> Out[SearchResponse + evidence]
   Store --> Obs[ObsidianExporter vault]
+  Store --> Doc[GraphDocument graph.json]
 ```
+
+- `graphify` (CLI, SDK `RetrievalApi.graphify`) analyzes and builds the
+  graph exactly once, then optionally persists it via two independent,
+  additive outputs: `graph.json` (`graph.serializer`, versioned with
+  `schema_version` and file/symbol/relationship metadata) and an Obsidian
+  vault. `GraphifyService` is the only orchestrator of that shared build;
+  the existing `graph`/`export-obsidian` CLI commands and
+  `RetrievalApi.graph`/`export_obsidian` are unchanged and still build
+  independently for their single-purpose use. `graph.json` round-trips
+  through `document_to_snapshot` without re-analyzing the repository.
 
 - Node identity is the qualified name; nodes carry file, line span, parent,
   module, and the linked chunk ID. Edges are typed (DEFINES, CONTAINS,
@@ -34,10 +45,13 @@ flowchart LR
   duplicated. Evidence on each result distinguishes bm25 rank, vector
   rank, hybrid seed rank, and graph distance/path.
 - The `ObsidianExporter` renders the graph (the source of truth) into a
-  deterministic Markdown vault. Note names are sanitized; wikilinks exist
-  only for real, resolved relationships; repository text is confined to
-  code spans and injection-safe fences; exports never delete and require
-  explicit overwrite intent for non-empty destinations.
+  deterministic Markdown vault. Note names are sanitized; distinct node IDs
+  that sanitize alike get a deterministic `-2`, `-3`, ... suffix
+  (`export.notes.build_filenames`) so no note is silently overwritten;
+  wikilinks exist only for real, resolved relationships and always match
+  the assigned filename; repository text is confined to code spans and
+  injection-safe fences; exports never delete and require explicit
+  overwrite intent for non-empty destinations.
 
 ## M3 retrieval pipeline
 

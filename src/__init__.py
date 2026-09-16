@@ -63,6 +63,7 @@ from repoagent.graph.models import (
     GraphSnapshot,
     NodeType,
 )
+from repoagent.graph.serializer import GraphifyResult
 from repoagent.ports.sandbox import SandboxRunner, SandboxSession
 from repoagent.ports.task_store import TaskStore
 from repoagent.retrieval.models import (
@@ -112,6 +113,7 @@ __all__ = [
     "FileAnalysis",
     "FileError",
     "GraphEdge",
+    "GraphifyResult",
     "GraphNode",
     "GraphSnapshot",
     "ImportInfo",

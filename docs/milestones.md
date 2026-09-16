@@ -86,15 +86,21 @@ hybrid seeds with graph expansion through the shared RRF implementation
 (`hybrid_graph` strategy); graph snapshots persist inside the index; results
 carry structural evidence (lexical/vector ranks, graph distance, hop paths);
 `repoagent graph` inspects and serializes the graph; `repoagent
-export-obsidian` renders deterministic Obsidian vaults with safe filenames,
-wikilinks for real relationships only, and injection-safe fences; and the
-evaluation framework compares all four strategies.
+export-obsidian` renders deterministic Obsidian vaults with vault-unique
+(collision-safe) filenames, wikilinks for real relationships only, and
+injection-safe fences; and the evaluation framework compares all four
+strategies. `repoagent graphify` (`GraphifyService`) builds the graph once
+and persists it as a versioned `graph.json` (`graph.serializer`,
+schema/version + file/symbol/relationship metadata, loadable again without
+re-analysis) and/or the same Obsidian vault, reusing `graph`/
+`export-obsidian`'s underlying components rather than a second graph model.
 
 Remaining M4 gaps: call resolution is name-based (no type inference), so
 attribute calls remain partial and cannot distinguish same-named methods
-across types; the graph is rebuilt in memory from the snapshot per search;
-no persistent graph database, no cross-repository identity, no reference
-graph (attribute reads) and no Git-history edges yet.
+across types; the graph is rebuilt in memory from the snapshot per search
+(or from `graph.json` when explicitly loaded); no persistent graph
+database, no cross-repository identity, no reference graph (attribute
+reads) and no Git-history edges yet.
 
 ## M5 delivered
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from repoagent.adapters.index_store import JsonIndexStore
 from repoagent.analysis.analyzer import RepositoryAnalyzer
+from repoagent.application.graphify import GraphifyService
 from repoagent.application.indexing import IndexService
 from repoagent.application.searching import SearchService
 from repoagent.config import Settings
@@ -14,6 +15,7 @@ from repoagent.evaluation.models import EvaluationReport, RetrievalCase
 from repoagent.export.obsidian import ExportSummary, ObsidianExporter
 from repoagent.graph.builder import RepositoryGraphBuilder
 from repoagent.graph.models import GraphSnapshot
+from repoagent.graph.serializer import GraphifyResult
 from repoagent.ports.index_store import IndexStore
 from repoagent.retrieval.embeddings import (
     EmbeddingProvider,
@@ -110,6 +112,30 @@ class RetrievalApi:
         graph = RepositoryGraphBuilder().build(analysis).to_snapshot()
         exporter = ObsidianExporter(Path(analysis.repository_root))
         return exporter.export(graph, Path(destination), overwrite=overwrite)
+
+    def graphify(
+        self,
+        source: str | Path,
+        *,
+        commit: str | None = None,
+        output: str | Path | None = None,
+        obsidian: str | Path | None = None,
+        artifacts_dir: str | Path | None = None,
+        overwrite: bool = False,
+    ) -> GraphifyResult:
+        """Build the graph once and persist graph.json and/or a vault.
+
+        ``artifacts_dir`` fills in whichever of ``output``/``obsidian`` was
+        left unset as ``<artifacts_dir>/<repository_name>/{graph.json,vault}``.
+        """
+        spec = RepositorySpec(source=str(source), commit=commit)
+        return GraphifyService().run(
+            spec,
+            output=Path(output) if output is not None else None,
+            obsidian=Path(obsidian) if obsidian is not None else None,
+            artifacts_dir=Path(artifacts_dir) if artifacts_dir is not None else None,
+            overwrite=overwrite,
+        )
 
     def _analyze(self, source: str | Path, *, commit: str | None = None):
         spec = RepositorySpec(source=str(source), commit=commit)
