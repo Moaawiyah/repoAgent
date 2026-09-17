@@ -355,6 +355,56 @@ flowchart TD
 - **Truthful status.** The reporter downgrades any `VALIDATED` state lacking a
   passing patched validation. Reports persist at `<data-dir>/repairs/<UUID>.json`.
 
+## Repository audit: issue discovery
+
+```mermaid
+flowchart LR
+  Analysis[RepositoryAnalysis M2] --> Detectors[AST/graph detectors]
+  Graph[RepositoryGraph M4] --> Detectors
+  Detectors --> Dedupe[deduplicate: overlapping file/category/line]
+  Dedupe --> Evidence[RepositoryToolkit.search_code: hybrid/graph RAG]
+  Evidence --> Verifier[IssueVerifier LLM: structured_generate]
+  Verifier --> Report[AuditReport: VERIFIED / UNCERTAIN / REJECTED]
+  Report -->|--repair, best VERIFIED| Issue[Issue] --> RepairService[M6 RepairService]
+```
+
+- `repoagent audit` (CLI, SDK `RepoAgent.audit`) discovers candidate issues in
+  an unseen repository instead of starting from a known one. `AuditService`
+  (`application/audit.py`) sequences: `default_detectors()`
+  (`audit/detectors/`) over an `AuditContext` wrapping the M2
+  `RepositoryAnalysis` and the M4 `RepositoryGraphBuilder` store (no second
+  graph); `audit.dedupe.deduplicate` (overlapping file/category/line ranges
+  collapse to the higher-confidence candidate); `attach_evidence`
+  (`application/audit_evidence.py`), which indexes the repository if needed
+  and reuses `RepositoryToolkit.search_code` for bounded, provenance-carrying
+  evidence (never whole files); and `verify_candidates`
+  (`application/audit_verification.py`), which calls `IssueVerifier`
+  (`agent/audit_verifier.py`) once per candidate via the shared
+  `structured_generate` helper, the same pattern `ReviewerAgent` uses.
+- Detectors are deterministic and LLM-free: broad/bare exception swallowing,
+  mutable default arguments, unguarded `None`-default parameter access,
+  unclosed `open()`, risky `subprocess`/`os` shell usage, unreachable code,
+  TODO/FIXME/XXX/HACK markers, circular module imports (DFS over graph
+  `IMPORTS` edges), and fan-in/fan-out coupling thresholds. A Ruff adapter
+  (`audit/detectors/ruff_adapter.py`) only participates when a `SandboxRunner`
+  is injected and the target already configures Ruff (`ProjectDetector`,
+  reused unmodified); it installs only Ruff (`DependencyStrategy.TOOLS`) and
+  parses output with the existing `parse_ruff`. The default static audit
+  executes no target commands at all.
+- `VerifierOutput` (`ai/audit_models.py`) is a bounded, `extra="forbid"`
+  structured schema like the M6 `ReviewerOutput`: a terminal status
+  (`verified`/`uncertain`/`rejected`), concise reasoning, supporting/
+  contradicting evidence, confidence, and a recommended follow-up check — no
+  hidden chain-of-thought. Malformed verifier output is reported `UNCERTAIN`
+  with an observable reason rather than dropped or promoted.
+- `--repair` converts the highest-confidence `VERIFIED` candidate into the
+  existing `Issue` model (`CandidateIssue.to_issue`) and calls the unchanged
+  `RepairService` (`application/audit_repair.py`) — no second repair
+  implementation, and nothing repairs automatically unless requested.
+  `AuditMetrics` records candidates generated/by-source, duplicates removed,
+  verified/uncertain/rejected counts, verification LLM calls/tokens/duration,
+  and the repair outcome, for later detector precision measurement.
+
 ## M8 implemented benchmarking, API, and dashboard
 
 ```mermaid

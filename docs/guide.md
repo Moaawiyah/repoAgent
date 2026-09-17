@@ -516,3 +516,56 @@ for attempt in report.attempts:
 default is `DockerSandboxRunner`. Metrics per repair: attempts, LLM calls,
 retrieval calls, investigations, files/lines changed, validation and sandbox
 seconds, tests before/after, and final status.
+
+## Repository audit: issue discovery
+
+`repoagent audit` goes the other direction from `investigate`/`repair`: instead
+of starting from a known issue, it discovers candidate problems in an unseen
+repository itself.
+
+```text
+Repository → AST/graph detectors (deterministic) → dedupe
+  → evidence enrichment (existing hybrid/graph RAG) → Issue Verifier (LLM)
+  → VERIFIED / UNCERTAIN / REJECTED → optional: existing repair pipeline
+```
+
+```sh
+uv run repoagent --env-file .env --data-dir /tmp/repoagent-data \
+  audit ./project --limit 10
+uv run repoagent --env-file .env --data-dir /tmp/repoagent-data \
+  audit ./project --json
+uv run repoagent --env-file .env --data-dir /tmp/repoagent-data \
+  audit ./project --repair
+```
+
+Detectors reuse the M2 analyzer and M4 graph directly (no second graph):
+broad/bare exception swallowing, mutable default arguments, unguarded access
+on a `None`-defaulted parameter, unclosed `open()` calls, risky
+`subprocess`/`os` shell usage, unreachable code, TODO/FIXME/XXX/HACK markers,
+circular module imports, and excessive fan-in/fan-out coupling. An optional
+Ruff adapter (only active when a `SandboxRunner` is injected, and only when
+the target already configures Ruff) ingests its findings through the same
+sandbox contract M7 uses, installing only Ruff itself — never the target's
+dependencies. The normal static audit executes no target commands at all.
+
+Surviving candidates are deduplicated (overlapping file/category/line ranges
+collapse to the higher-confidence finding), enriched with a few bounded,
+provenance-carrying evidence snippets via `RepositoryToolkit.search_code`
+(never whole files), then verified one at a time by an LLM Issue Verifier that
+must return `VERIFIED`, `UNCERTAIN`, or `REJECTED` with a concise reasoning
+summary, supporting/contradicting evidence, confidence, and a recommended
+follow-up check — never hidden chain-of-thought. A candidate whose verifier
+output fails structured validation is reported `UNCERTAIN`, never silently
+dropped or promoted to `VERIFIED`.
+
+`--repair` converts the highest-confidence `VERIFIED` finding into the
+existing `Issue` model and calls the unchanged M6 `RepairService`
+(Investigator → Developer → Static Validator → Reviewer) — no second repair
+implementation, and nothing is repaired unless `--repair` is passed. Like
+`investigate`/`repair`, `audit` indexes the repository if it has not been
+indexed yet, so it works directly against an unseen repository.
+
+SDK: `client.audit(source, limit=10, repair=False)` returns an `AuditReport`
+with `candidates`, `metrics` (candidates generated/by-source, duplicates
+removed, verified/uncertain/rejected counts, verification LLM calls/tokens/
+duration, repair outcome), and an optional `repair` field.

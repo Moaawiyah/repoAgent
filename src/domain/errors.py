@@ -57,6 +57,10 @@ class InvestigationError(RepoAgentError):
     """An investigation could not be started or executed."""
 
 
+class AuditError(RepoAgentError):
+    """A repository audit could not be started or completed."""
+
+
 class SandboxError(RepoAgentError):
     """The sandbox could not be created, executed, or cleaned up safely."""
 

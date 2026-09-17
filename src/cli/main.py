@@ -7,6 +7,7 @@ from uuid import UUID
 import typer
 
 from repoagent import __version__
+from repoagent.cli.audit_cli import register_audit
 from repoagent.cli.benchmark_cli import register_benchmark
 from repoagent.cli.commands import Json, register
 from repoagent.cli.graph_cli import register_graph
@@ -65,5 +66,6 @@ register_graph(app)
 register_graphify(app)
 register_investigate(app)
 register_repair(app)
+register_audit(app)
 register_benchmark(app)
 register_serve(app)

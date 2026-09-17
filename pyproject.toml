@@ -61,6 +61,8 @@ packages = [
     "repoagent.analysis",
     "repoagent.api",
     "repoagent.application",
+    "repoagent.audit",
+    "repoagent.audit.detectors",
     "repoagent.benchmark",
     "repoagent.cli",
     "repoagent.domain",

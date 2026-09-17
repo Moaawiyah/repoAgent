@@ -17,6 +17,7 @@ from repoagent.ports.task_store import TaskStore
 from repoagent.retrieval.embeddings import EmbeddingProvider
 from repoagent.retrieval.models import RetrievalStrategy, SearchResponse
 from repoagent.retrieval.persistence import IndexSummary
+from repoagent.sdk.audit_capability import AuditCapability
 from repoagent.sdk.benchmark_capability import BenchmarkCapability
 from repoagent.sdk.investigation import InvestigationApi
 from repoagent.sdk.repair_capability import RepairCapability
@@ -24,7 +25,7 @@ from repoagent.sdk.retrieval import RetrievalApi
 from repoagent.sdk.tasks import TaskApi
 
 
-class RepoAgent(RepairCapability, BenchmarkCapability):
+class RepoAgent(RepairCapability, BenchmarkCapability, AuditCapability):
     """Lazy SDK client composing an application service and replaceable stores.
 
     Construction performs no I/O and returns typed domain objects; no log
