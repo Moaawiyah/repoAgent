@@ -1011,6 +1011,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "groq" },
+    { name = "langchain-core" },
     { name = "langgraph" },
     { name = "openai" },
     { name = "pydantic" },
@@ -1031,6 +1032,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "groq", specifier = ">=1.7.0" },
+    { name = "langchain-core", specifier = ">=1.6,<2" },
     { name = "langgraph", specifier = ">=1.2.11,<2" },
     { name = "openai", specifier = ">=3.13.0" },
     { name = "pydantic", specifier = ">=2,<3" },

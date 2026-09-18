@@ -7,6 +7,7 @@ from uuid import uuid4
 from pydantic import Field
 
 from repoagent.analysis.models import AnalysisModel
+from repoagent.domain.workflow import StageStatus, WorkflowStage, advance, settle
 
 
 def now() -> datetime:
@@ -17,6 +18,7 @@ class JobKind(StrEnum):
     INVESTIGATE = "investigate"
     REPAIR = "repair"
     VALIDATED_REPAIR = "validated_repair"
+    DISCOVER = "discover"
 
 
 class JobStatus(StrEnum):
@@ -47,6 +49,16 @@ class JobRecord(AnalysisModel):
     updated_at: datetime = Field(default_factory=now)
     events: list[JobEvent] = Field(default_factory=list)
     error: str | None = Field(default=None, max_length=1000)
+    stages: list[WorkflowStage] = Field(default_factory=list)
+
+    def stage(self, key: str, status: StageStatus, detail: str = "") -> "JobRecord":
+        """Record observable workflow progress (unknown stage keys are ignored)."""
+        return self.model_copy(
+            update={
+                "updated_at": now(),
+                "stages": advance(self.stages, key, status, detail),
+            }
+        )
 
     def transition(self, status: JobStatus, message: str = "") -> "JobRecord":
         return self.model_copy(
@@ -55,5 +67,8 @@ class JobRecord(AnalysisModel):
                 "updated_at": now(),
                 "events": [*self.events, JobEvent(status=status, message=message)],
                 "error": message if status == JobStatus.FAILED else self.error,
+                "stages": settle(self.stages, status == JobStatus.SUCCEEDED)
+                if status.terminal
+                else self.stages,
             }
         )

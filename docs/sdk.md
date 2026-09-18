@@ -121,3 +121,23 @@ expose the ablation flags. The M1 placeholder `benchmark(suite)` method, which
 returned a blocked task record, was replaced by `benchmarks()`. The API
 (`repoagent.api.app.create_app`) accepts an injected `ApiContext` holding the
 client, policy, job queue, job store, and provider.
+
+## Web workflows and LangChain adapters
+
+```python
+client = RepoAgent(settings=Settings(_env_file=".env"))
+flows = client.workflows()  # optional: loader=callable(url) -> RepositoryHandle
+found = flows.discover("https://github.com/owner/repo", progress=print)
+verified = VerifiedIssue.from_report(found.report, found.report.candidates[0].id)
+fixed = flows.repair(
+    found.repository.source, verified.to_issue(), execute=False, handle=found.repository
+)
+retriever = client.langchain_retriever("./project")  # LangChain BaseRetriever
+```
+
+`discover` never repairs. `VerifiedIssue` rejects anything not `VERIFIED`.
+`progress` receives `(stage_key, StageStatus, detail)`. Every workflow runs
+under `WorkflowLimits.from_settings` (LLM calls, tokens, task deadline,
+candidate cap, existing loop limits). Any LangChain chat model can be passed as
+`provider=LangChainChatProvider(model)`, and any LangChain `Embeddings` as
+`RepoAgent(embedding_provider=LangChainEmbeddingProvider(emb, name=..., dimension=...))`.

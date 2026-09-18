@@ -22,8 +22,11 @@ def repository_router() -> APIRouter:
 
     @router.get("/config")
     def config(request: Request) -> dict:
+        ctx = context(request)
         return {
-            "execution_repositories": context(request).policy.execution_repositories
+            "execution_repositories": ctx.policy.execution_repositories,
+            "llm_configured": ctx.provider is not None,
+            **ctx.policy.public_config(),
         }
 
     @router.post("/analyze")

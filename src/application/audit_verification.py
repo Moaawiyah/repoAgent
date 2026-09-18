@@ -8,6 +8,7 @@ than silently dropped or upgraded to VERIFIED.
 import time
 
 from repoagent.agent.audit_verifier import IssueVerifier
+from repoagent.ai.budget import LLMBudgetExceeded
 from repoagent.ai.provider import LLMProvider
 from repoagent.domain.audit import CandidateIssue, VerificationStatus, VerifierFinding
 from repoagent.domain.audit_report import AuditMetrics
@@ -37,14 +38,21 @@ def verify_candidates(
     if not candidates:
         return candidates, AuditMetrics()
     verifier = IssueVerifier(provider)
-    results, input_tokens, output_tokens = [], 0, 0
+    results, input_tokens, output_tokens, calls = [], 0, 0, 0
     started = time.monotonic()
     for candidate in candidates:
         try:
             verified, result = verifier.verify(candidate)
+        except LLMBudgetExceeded as error:
+            # The budget check short-circuits before the provider is ever
+            # contacted, so this candidate must not count as an LLM call.
+            results.append(_unverifiable(candidate, f"Not verified: {error}."))
+            continue
         except (LLMError, LLMOutputError):
+            calls += 1
             results.append(_unverifiable(candidate, "Verifier output was invalid."))
             continue
+        calls += 1
         results.append(verified)
         input_tokens += result.usage.input_tokens
         output_tokens += result.usage.output_tokens
@@ -56,7 +64,7 @@ def verify_candidates(
         verified=counts[VerificationStatus.VERIFIED],
         uncertain=counts[VerificationStatus.UNCERTAIN],
         rejected=counts[VerificationStatus.REJECTED],
-        verification_llm_calls=len(candidates),
+        verification_llm_calls=calls,
         verification_input_tokens=input_tokens,
         verification_output_tokens=output_tokens,
         verification_duration_seconds=duration,

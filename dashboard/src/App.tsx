@@ -1,56 +1,59 @@
 import { useEffect, useState } from "react";
-import { getConfig, getJob, getResult, submitInvestigation, submitRepair } from "./api";
-import { RequestForm, type FormValues } from "./components/RequestForm";
-import { ResultView } from "./components/ResultView";
-import { Timeline } from "./components/Timeline";
-import type { JobRecord, JobResult } from "./types";
+import { api as defaultApi, type Api } from "./api";
+import { HomePage, type Submission } from "./components/HomePage";
+import { TaskPage } from "./components/TaskPage";
+import type { ServerConfig } from "./types";
 
-const POLL_MS = 1500;
+// Hash routes keep results linkable and refresh-safe without a router dependency.
+export function taskFromHash(hash: string): string | null {
+  const match = /^#\/tasks\/([0-9a-f]{32})$/.exec(hash);
+  return match ? match[1] : null;
+}
 
-export function App() {
-  const [executionRepos, setExecutionRepos] = useState<string[]>([]);
-  const [job, setJob] = useState<JobRecord | null>(null);
-  const [result, setResult] = useState<JobResult | null>(null);
+export function App({ api = defaultApi }: { api?: Api }) {
+  const [taskId, setTaskId] = useState<string | null>(() => taskFromHash(window.location.hash));
+  const [config, setConfig] = useState<ServerConfig | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getConfig().then((c) => setExecutionRepos(c.execution_repositories)).catch(() => undefined);
-  }, []);
+    api.config().then(setConfig).catch(() => setConfig(null));
+    const onHash = () => setTaskId(taskFromHash(window.location.hash));
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [api]);
 
-  useEffect(() => {
-    if (!job || job.status === "succeeded" || job.status === "failed") return;
-    const timer = setTimeout(async () => {
-      try {
-        const next = await getJob(job.id);
-        if (next.status === "succeeded" || next.status === "failed") {
-          setResult((await getResult(next.id)).result);
-        }
-        setJob(next);
-      } catch (cause) {
-        setError(String(cause));
-      }
-    }, POLL_MS);
-    return () => clearTimeout(timer);
-  }, [job]);
+  function open(id: string | null) {
+    window.location.hash = id ? `#/tasks/${id}` : "#/";
+    setTaskId(id);
+  }
 
-  async function submit(values: FormValues, action: "investigate" | "repair") {
+  async function submit(submission: Submission) {
+    setBusy(true);
     setError(null);
-    setResult(null);
     try {
-      const options = { repository: values.repository, issue: values.issue, execute: values.execute };
-      setJob(action === "investigate" ? await submitInvestigation(options) : await submitRepair(options));
+      const job = submission.operation === "repair"
+        ? await api.repair(submission.url, submission.issue, submission.sandbox)
+        : await api.discover(submission.url);
+      open(job.id);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <main>
-      <h1>RepoAgent</h1>
-      <RequestForm executionRepos={executionRepos} busy={!!job && !result && job.status !== "failed"} onSubmit={submit} />
-      {error && <p className="error">{error}</p>}
-      {job && <Timeline job={job} result={result} />}
-      {job && result && <ResultView repository={job.repository} result={result} />}
-    </main>
+    <>
+      <nav className="topbar">
+        <button type="button" className="brand" onClick={() => open(null)}>RepoAgent</button>
+        {taskId && <button type="button" className="ghost" onClick={() => open(null)}>New task</button>}
+      </nav>
+      <main>
+        {taskId
+          ? <TaskPage taskId={taskId} api={api} config={config} onOpenTask={open} />
+          : <HomePage config={config} busy={busy} error={error} onSubmit={submit} />}
+      </main>
+    </>
   );
 }

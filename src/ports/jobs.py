@@ -6,9 +6,19 @@ from typing import Protocol
 from pydantic import BaseModel
 
 from repoagent.domain.jobs import JobKind, JobRecord
+from repoagent.domain.workflow import StageStatus, WorkflowStage
 
-Progress = Callable[[str], None]
-Work = Callable[[Progress], BaseModel]
+
+class ProgressReporter(Protocol):
+    """Persists observable progress while a job runs."""
+
+    def __call__(self, message: str) -> None: ...
+
+    def stage(self, key: str, status: StageStatus, detail: str = "") -> None: ...
+
+
+Progress = ProgressReporter
+Work = Callable[[ProgressReporter], BaseModel]
 
 
 class JobStore(Protocol):
@@ -24,4 +34,10 @@ class JobStore(Protocol):
 
 
 class JobQueue(Protocol):
-    def submit(self, kind: JobKind, repository: str, work: Work) -> JobRecord: ...
+    def submit(
+        self,
+        kind: JobKind,
+        repository: str,
+        work: Work,
+        stages: list[WorkflowStage] | None = None,
+    ) -> JobRecord: ...

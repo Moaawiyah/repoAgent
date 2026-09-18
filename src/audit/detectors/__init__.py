@@ -25,12 +25,14 @@ __all__ = [
     "RuffDetector",
     "SubprocessRiskDetector",
     "TodoMarkerDetector",
+    "ast_detectors",
     "default_detectors",
+    "graph_detectors",
 ]
 
 
-def default_detectors(sandbox_runner: SandboxRunner | None = None) -> list[Detector]:
-    """The standard detector set; Ruff only participates when sandboxed."""
+def ast_detectors() -> list[Detector]:
+    """LLM-free AST rules over parsed source."""
     return [
         BroadExceptionDetector(),
         MutableDefaultDetector(),
@@ -39,7 +41,14 @@ def default_detectors(sandbox_runner: SandboxRunner | None = None) -> list[Detec
         SubprocessRiskDetector(),
         DeadCodeDetector(),
         TodoMarkerDetector(),
-        CircularDependencyDetector(),
-        CouplingDetector(),
-        RuffDetector(sandbox_runner),
     ]
+
+
+def graph_detectors() -> list[Detector]:
+    """Rules over the native M4 repository graph."""
+    return [CircularDependencyDetector(), CouplingDetector()]
+
+
+def default_detectors(sandbox_runner: SandboxRunner | None = None) -> list[Detector]:
+    """The standard detector set; Ruff only participates when sandboxed."""
+    return [*ast_detectors(), *graph_detectors(), RuffDetector(sandbox_runner)]

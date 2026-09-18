@@ -31,3 +31,18 @@ class RepairBody(InvestigateBody):
     max_attempts: int | None = Field(default=None, ge=1, le=10)
     max_revisions: int | None = Field(default=None, ge=0, le=5)
     timeout: int | None = Field(default=None, ge=1, le=3600)
+
+
+class RepairTaskBody(Body):
+    repository_url: str = Field(min_length=1, max_length=300)
+    issue: str = Field(min_length=10, max_length=6000)
+    sandbox_validation: bool = False
+
+
+class DiscoverTaskBody(Body):
+    repository_url: str = Field(min_length=1, max_length=300)
+    limit: int | None = Field(default=None, ge=1, le=50)
+
+
+class FindingRepairBody(Body):
+    sandbox_validation: bool = False

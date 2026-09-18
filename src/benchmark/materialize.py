@@ -9,19 +9,11 @@ from pathlib import Path
 
 from repoagent.benchmark.models import RepositoryRef
 from repoagent.domain.errors import RepositoryInvalid
+from repoagent.sandbox.git import HARDENING
 from repoagent.sandbox.process import ProcessRunner, SubprocessRunner
 
 GIT_TIMEOUT, MAX_OUTPUT = 900, 8000
-HARDENING = (
-    "-c", "core.hooksPath=/dev/null",
-    "-c", "core.symlinks=false",
-    "-c", "protocol.allow=never",
-    "-c", "protocol.https.allow=always",
-    "-c", "filter.lfs.smudge=",
-    "-c", "filter.lfs.process=",
-    "-c", "filter.lfs.required=false",
-    "-c", "advice.detachedHead=false",
-)  # fmt: skip
+__all__ = ["HARDENING", "RepositoryMaterializer"]
 
 
 class RepositoryMaterializer:

@@ -440,3 +440,32 @@ flowchart TD
   endpoints reuse `graph.inspection`, which is shared with the CLI.
 - Chunk IDs use the repository name, not its absolute path, so rankings and
   tie-breaks are identical wherever a benchmark repository is checked out.
+
+## Web workflows: RepairGraph, DiscoveryGraph, GitHub sources
+
+```mermaid
+flowchart TD
+  UI[React web app] -->|POST /api/tasks/repair · discover| Routes[workflow_routes]
+  Routes --> Policy[ApiPolicy.github: URL + execution allowlist]
+  Routes --> Queue[LocalJobQueue: stages persisted on JobRecord]
+  Queue --> SDK[RepoAgent.workflows]
+  SDK --> Source[GitHubRepositorySource: hardened shallow fetch]
+  SDK --> RG[RepairGraph] --> Sub[Investigator · Developer/Reviewer · M7 sandbox subgraphs]
+  SDK --> DG[DiscoveryGraph] --> Audit[detectors · dedupe · RAG evidence · verifier]
+  RG & DG -.LangChain callbacks / stage sink.-> Queue
+  Routes -->|GET /tasks/id/graph| View[graph.view.build_view over RepositoryGraph]
+```
+
+- `WorkflowApi` (`sdk/workflows.py`) composes existing SDK operations; it
+  adds repository loading, a `BudgetedProvider`, and progress — not another
+  repair, retrieval or sandbox pipeline. `AuditService` now runs discovery
+  through `DiscoveryGraph`, so CLI, SDK and web share one implementation.
+- Stage progress: `WorkflowProgressHandler` is a LangChain callback handler;
+  LangGraph propagates callbacks into graphs invoked inside nodes, so the
+  unchanged Investigator/RepairAgent/ExecutionRepairAgent node starts map to
+  stages. `workflows/outcomes.py` marks the failing stage from the final
+  report status and never upgrades a failure.
+- Results are `RepairWorkflowResult` / `DiscoveryWorkflowResult` with a
+  `RepositoryHandle` (source URL, commit, workspace path). The graph endpoint
+  rebuilds the native graph from that snapshot; the discovery → repair
+  handoff reuses the same handle, so both analyze identical code.

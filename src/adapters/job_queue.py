@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from repoagent.domain.errors import RepoAgentError
 from repoagent.domain.jobs import JobKind, JobRecord, JobStatus
+from repoagent.domain.workflow import StageStatus, WorkflowStage
 from repoagent.ports.jobs import JobStore, Work
 
 LOGGER = logging.getLogger(__name__)
@@ -24,8 +25,12 @@ class _JobRun:
         self.record = self.record.transition(status, message)
         self.store.save(self.record)
 
-    def progress(self, message: str) -> None:
+    def __call__(self, message: str) -> None:
         self.move(JobStatus.RUNNING, message[:500])
+
+    def stage(self, key: str, status: StageStatus, detail: str = "") -> None:
+        self.record = self.record.stage(key, status, detail)
+        self.store.save(self.record)
 
 
 class LocalJobQueue:
@@ -33,10 +38,16 @@ class LocalJobQueue:
         self._store = store
         self._pool = ThreadPoolExecutor(max_workers=max_workers)
 
-    def submit(self, kind: JobKind, repository: str, work: Work) -> JobRecord:
-        record = JobRecord(kind=kind, repository=repository).transition(
-            JobStatus.QUEUED, "Job accepted"
-        )
+    def submit(
+        self,
+        kind: JobKind,
+        repository: str,
+        work: Work,
+        stages: list[WorkflowStage] | None = None,
+    ) -> JobRecord:
+        record = JobRecord(
+            kind=kind, repository=repository, stages=stages or []
+        ).transition(JobStatus.QUEUED, "Job accepted")
         self._store.save(record)
         self._pool.submit(self._run, _JobRun(self._store, record), work)
         return record
@@ -44,7 +55,7 @@ class LocalJobQueue:
     def _run(self, run: _JobRun, work: Work) -> None:
         run.move(JobStatus.RUNNING, "Worker started")
         try:
-            result = work(run.progress)
+            result = work(run)
         except RepoAgentError as error:
             run.move(JobStatus.FAILED, str(error)[:500])
         except Exception:  # noqa: BLE001 - boundary: never crash the worker thread

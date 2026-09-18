@@ -188,6 +188,26 @@ and `export-obsidian` remain available unchanged for inspection-only use.
   analyze → (propose | reinvestigate | report). A terminal status always
   routes to the report, and the recursion limit is derived from the attempt
   limits.
+- **RepairGraph** (`workflows/repair_graph.py`): load_repository →
+  analyze_repository → repair → finalize. `repair` runs the existing
+  Investigator, Developer/Reviewer, and sandbox subgraphs unchanged; a
+  LangChain callback handler turns their node executions into live stages.
+- **DiscoveryGraph** (`workflows/discovery_graph.py`): load → analyze →
+  static detectors → graph detectors → deduplicate → (no candidates →
+  results) → RAG evidence → Issue Verifier → results. It never repairs; a
+  VERIFIED finding converts to `Issue` (`VerifiedIssue`) and runs through
+  RepairGraph only on explicit request.
+- **Limits** (`domain/limits.py`, `ai/budget.py`): investigation iterations,
+  repair attempts/revisions, discovery candidates, LLM calls, tokens, sandbox
+  timeout/output, and a task deadline, all enforced by code. There is no LLM
+  watchdog agent.
+
+LangChain (`langchain-core`) is used only at the edges:
+`LangChainChatProvider` adapts any LangChain chat model to the `LLMProvider`
+protocol (validated by RepoAgent's own structured-output check),
+`RepoAgentRetriever`/`search_code_tool` expose the existing BM25 + vector +
+graph fusion as a LangChain retriever/tool, and the embedding adapters bridge
+`EmbeddingProvider` and LangChain `Embeddings` in both directions.
 
 ## Docker sandbox
 
@@ -266,7 +286,14 @@ violations in model output (Groq `json_validate_failed`).
 - `GET /api/graph`
 - `POST /api/investigate` and `POST /api/repair`: these return `202` with a
   job record and never block on the work
-- `GET /api/tasks`, `/api/tasks/{id}`, `/api/tasks/{id}/result`
+- `POST /api/tasks/repair` (`repository_url`, `issue`, `sandbox_validation`)
+  and `POST /api/tasks/discover` (`repository_url`): GitHub URL workflows
+- `POST /api/tasks/{id}/findings/{finding_id}/repair`: send one VERIFIED
+  discovery finding to RepairGraph on the same snapshot
+- `GET /api/tasks/{id}/graph` (bounded graph view) and
+  `?format=graph.json` (download)
+- `GET /api/tasks`, `/api/tasks/{id}` (includes live `stages`),
+  `/api/tasks/{id}/result`
 - `GET /api/benchmarks/runs[/{id}]`
 - `GET /api/health`, `/api/config`
 
@@ -274,15 +301,28 @@ Jobs run on a local worker pool behind a `JobQueue` port and persist their
 records and results as JSON behind a `JobStore` port. A durable queue can
 replace them without changing routes.
 
-The dashboard (`dashboard/`, React + TypeScript + Vite) submits
-investigations and repairs and polls job progress. It shows the stage
-timeline, evidence, root cause, graph neighborhood, patch diff, reviewer
-decision, sandbox attempts, token usage, and final status.
+The web app (`dashboard/`, React + TypeScript + Vite) takes a GitHub URL and
+an operation: **Repair Issue** (with a bug description) or **Discover
+Issues**. It polls the job and shows live workflow stages, then the result:
+root cause, evidence, affected files/symbols, diff, reviewer decisions,
+baseline vs. patched tests, Ruff, attempts and usage for repairs; verified /
+uncertain / rejected finding cards with evidence, "Show in Graph", and
+"Attempt Repair" for discoveries. An interactive SVG graph of the native
+`RepositoryGraph` (zoom, pan, kind/edge filters, search, detail panel with
+callers, callees, imports, inheritance) is shown for every workflow result.
+Results are linkable at `#/tasks/<id>`.
 
 ```sh
-cd dashboard && npm ci && npm run build   # then: repoagent serve --dashboard dashboard/dist ...
+cd dashboard && npm ci && npm run build
+uv run repoagent --env-file .env serve --dashboard dashboard/dist   # http://127.0.0.1:8000
 cd dashboard && npm run dev               # dev server proxies /api to 127.0.0.1:8000
 ```
+
+GitHub repositories are fetched with hardened, credential-free, shallow git
+into `<data-dir>/workspaces/<owner>__<repo>@<sha>` (size-limited, reused per
+commit). Docker validation of fetched repositories requires the operator to
+list them in `REPOAGENT_API_EXECUTION_GITHUB` (`["owner/name"]`, or `["*"]`);
+otherwise repairs are investigated, patched and reviewed statically.
 
 ## Security model
 
@@ -292,8 +332,11 @@ cd dashboard && npm run dev               # dev server proxies /api to 127.0.0.1
 - The original repository is never written; its fingerprint is checked around
   every sandbox run. Only the sandbox executes target code, and only through
   allowlisted commands.
-- API requests are limited to local repositories under `--allow-root`
-  (resolved after symlinks, URLs rejected). **Execution** is limited to
+- Local-path API requests are limited to repositories under `--allow-root`
+  (resolved after symlinks). Web workflows accept only canonical
+  `https://github.com/<owner>/<repo>` URLs (no credentials, ports, queries or
+  sub-paths), validated before a job is created; git runs with hooks,
+  symlinks, LFS and credential helpers disabled and never executes content. **Execution** is limited to
   `--execution-repo` entries, so arbitrary repositories get analysis, search,
   and investigation only.
 - The API has no shell endpoint. Binding a non-loopback host requires
@@ -322,8 +365,11 @@ cd dashboard && npm run dev               # dev server proxies /api to 127.0.0.1
 - **Validation scope.** Validation supports pytest and Ruff. Dependency
   manifests changed by a patch are not reinstalled.
 - **Confidence.** Confidence values are uncalibrated.
-- **Dashboard progress.** Progress granularity comes from job events and the
-  final report (no streaming of in-graph steps).
+- **Web workflows.** Progress is polled (1.2 s), not streamed. Fetched
+  workspaces are not garbage-collected. Only public GitHub repositories on the
+  default branch are supported. Graph views over 600 nodes are truncated
+  (task-related nodes first); the graph is re-derived from the snapshot per
+  request. `/api/tasks` lists every user's jobs (no accounts).
 
 ## Development
 
@@ -335,3 +381,11 @@ cd dashboard && npm run typecheck && npm test && npm run build
 The quality gates require statement coverage strictly above 85% and at most
 150 lines per Python file. Detailed per-milestone usage:
 [docs/guide.md](docs/guide.md). SDK reference: [docs/sdk.md](docs/sdk.md).
+Contributor workflow: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
+
+## More documentation
+
+[docs/README.md](docs/README.md) indexes every doc, including
+[PRD.md](docs/PRD.md) (what this is for and why), [TODO.md](docs/TODO.md)
+(current backlog), and [CHANGELOG.md](docs/CHANGELOG.md) (milestone
+history).

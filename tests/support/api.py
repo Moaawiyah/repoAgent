@@ -18,12 +18,15 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 AUTH = FIXTURES / "auth_bug"
 
 
-def api_client(tmp_path, token=None, queue=None, runner=None) -> TestClient:
+def api_client(
+    tmp_path, token=None, queue=None, runner=None, provider=None, loader=None, **extra
+) -> TestClient:
     settings = Settings(
         data_dir=tmp_path / "data",
         api_allowed_roots=[FIXTURES],
         api_execution_repositories=[AUTH],
         api_token=token,
+        **extra,
     )
     sandbox = runner or FakeSandboxRunner(attempts=[execution(pytest_result(passed=3))])
     store = FileJobStore(tmp_path / "jobs")
@@ -32,7 +35,8 @@ def api_client(tmp_path, token=None, queue=None, runner=None) -> TestClient:
         policy=ApiPolicy(settings),
         jobs=queue or LocalJobQueue(store),
         store=store,
-        provider=ExecutionProvider(),
+        provider=provider or ExecutionProvider(),
+        loader=loader,
     )
     return TestClient(create_app(settings, context=context))
 

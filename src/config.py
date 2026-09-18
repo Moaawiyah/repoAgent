@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     api_execution_repositories: list[Path] = Field(default_factory=list)
     api_token: SecretStr | None = None
     api_max_workers: int = Field(default=1, ge=1, le=8)
+    api_allow_github: bool = True
+    api_execution_github: list[str] = Field(default_factory=list)
+    github_clone_timeout: int = Field(default=300, ge=10, le=3600)
+    github_max_repository_mb: int = Field(default=200, ge=1, le=10_000)
+    discovery_max_candidates: int = Field(default=25, ge=1, le=200)
+    workflow_max_llm_calls: int = Field(default=200, ge=1, le=5000)
+    workflow_max_tokens: int | None = Field(default=None, ge=1000, le=100_000_000)
+    workflow_task_timeout: int = Field(default=1800, ge=30, le=14_400)
 
     @field_validator("data_dir")
     @classmethod

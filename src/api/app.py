@@ -11,10 +11,12 @@ from repoagent.adapters.job_store import FileJobStore
 from repoagent.ai.openai_provider import llm_provider_from_settings
 from repoagent.api.context import ApiContext
 from repoagent.api.job_routes import job_router
-from repoagent.api.policy import ApiForbidden, ApiPolicy, ApiUnauthorized
+from repoagent.api.policy import ApiConflict, ApiForbidden, ApiPolicy, ApiUnauthorized
 from repoagent.api.repository_routes import repository_router
+from repoagent.api.workflow_routes import workflow_router
 from repoagent.config import Settings
 from repoagent.domain.errors import (
+    AuditError,
     IndexNotFound,
     LLMError,
     RepoAgentError,
@@ -27,6 +29,8 @@ from repoagent.sdk import RepoAgent
 STATUS = (
     (ApiUnauthorized, 401),
     (ApiForbidden, 403),
+    (ApiConflict, 409),
+    (AuditError, 409),
     (TaskNotFound, 404),
     (IndexNotFound, 404),
     (RepositoryInvalid, 400),
@@ -67,6 +71,7 @@ def create_app(
     app.add_exception_handler(RepoAgentError, _error)
     guarded = [Depends(authorize)]
     app.include_router(repository_router(), prefix="/api", dependencies=guarded)
+    app.include_router(workflow_router(), prefix="/api", dependencies=guarded)
     app.include_router(job_router(), prefix="/api", dependencies=guarded)
     if dashboard is not None and (dashboard / "index.html").is_file():
         app.mount("/", StaticFiles(directory=dashboard, html=True), name="dashboard")

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from repoagent.config import Settings
 from repoagent.domain.errors import RepoAgentError
+from repoagent.domain.github import GitHubRepository, parse_github_url
 
 
 class ApiForbidden(RepoAgentError):
@@ -13,6 +14,10 @@ class ApiForbidden(RepoAgentError):
 
 class ApiUnauthorized(RepoAgentError):
     """The request lacks a valid bearer token."""
+
+
+class ApiConflict(RepoAgentError):
+    """The task exists but is not in a state that allows the request."""
 
 
 class ApiPolicy:
@@ -24,6 +29,8 @@ class ApiPolicy:
             p.expanduser().resolve() for p in settings.api_execution_repositories
         ]
         self._token = settings.api_token
+        self._github = settings.api_allow_github
+        self._github_execution = {s.lower() for s in settings.api_execution_github}
 
     def authorize(self, header: str | None) -> None:
         if self._token is None:
@@ -54,3 +61,23 @@ class ApiPolicy:
     @property
     def execution_repositories(self) -> list[str]:
         return [str(path) for path in self._execution]
+
+    def github(self, raw: str) -> GitHubRepository:
+        """Validate an untrusted URL; fetching happens later inside the job."""
+        if not self._github:
+            raise ApiForbidden("GitHub repositories are disabled on this server")
+        return parse_github_url(raw)
+
+    def github_execution(self, repository: GitHubRepository) -> None:
+        allowed = self._github_execution
+        if "*" not in allowed and repository.slug.lower() not in allowed:
+            raise ApiForbidden(
+                "Docker validation is limited to repositories configured by the "
+                "server operator; run without sandbox validation instead"
+            )
+
+    def public_config(self) -> dict:
+        return {
+            "github_enabled": self._github,
+            "github_execution": sorted(self._github_execution),
+        }
