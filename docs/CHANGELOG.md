@@ -31,6 +31,17 @@ diverge, the code and README are correct, not this file.
   verified/uncertain/rejected finding cards), and an interactive SVG
   knowledge-graph explorer (zoom/pan, kind/edge filters, node detail panel
   with callers/callees/imports/inheritance).
+- Added a deterministic per-job task-timeout watchdog (`adapters/job_queue.py`):
+  a `threading.Timer` marks a job `FAILED` at `workflow_task_timeout` wall
+  time regardless of what step it's stuck in, guarded against a late natural
+  completion overwriting an already-reported timeout. Not an LLM agent —
+  the original spec explicitly excludes an LLM watchdog; this closes the one
+  real gap (`BudgetedProvider`'s deadline only checks at LLM call
+  boundaries) with a plain timer.
+- Wired `LangChainChatProvider` through the same rate-limit gatekeeper
+  (`ai/throttle.SlidingWindowLimiter`) that `GroqProvider`/`OpenAIChatProvider`
+  already use, closing a gap found in code review where a LangChain-backed
+  provider bypassed throttling entirely.
 - Added `docs/PRD.md`, `docs/TODO.md`, `docs/CONTRIBUTING.md`, this file.
 
 ## M9 — Repository audit / issue discovery

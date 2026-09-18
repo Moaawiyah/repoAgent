@@ -83,6 +83,21 @@ fixed unreviewed, since several are legitimate scope/severity tradeoffs.
 
 ### Fixed
 
+- [x] **Deterministic task-timeout watchdog.** `WorkflowLimits.task_timeout_seconds`
+      only bounded gaps between LLM calls (via `BudgetedProvider`); a job
+      stuck in a non-LLM step had no wall-clock cap. `adapters/job_queue.py`
+      now schedules a `threading.Timer` per job that marks it `FAILED` at the
+      deadline, guarded so a late natural completion can never overwrite an
+      already-reported timeout. No LLM involved — this is exactly the
+      deterministic limit the original spec asked for, not the forbidden LLM
+      watchdog agent. Covered by `tests/unit/test_job_queue_watchdog.py`.
+- [x] **`LangChainChatProvider` now shares the rate-limit gatekeeper.**
+      Wired through the same `SlidingWindowLimiter` (`ai/throttle.py`) that
+      `GroqProvider`/`OpenAIChatProvider` use, via optional
+      `tokens_per_minute`/`requests_per_minute`/`limiter=` constructor
+      arguments (off by default, preserving prior behavior). Covered by
+      `tests/unit/test_langchain_rate_limit.py`.
+
 - [x] **GitHub install race (TOCTOU).** `GitHubRepositorySource._install()`
       unconditionally `rmtree()`d the target and renamed staging into it, with
       the `.ready` marker checked before, not during, install — concurrent
@@ -153,11 +168,6 @@ fixed unreviewed, since several are legitimate scope/severity tradeoffs.
       near the 600-node truncation cap this can visibly block the UI thread
       during the initial render. Consider a Web Worker or an iteration cap
       tied to node count.
-- [ ] **`LangChainChatProvider` bypasses the shared rate limiter.**
-      `ai/langchain_chat.py` doesn't go through the throttling that
-      `GroqProvider`/`OpenAIChatProvider` apply (`ai/rate_limit.py`); a
-      LangChain-backed provider configured for a rate-limited vendor has no
-      built-in backoff.
 - [ ] **GitHub URL validation is duplicated.** `domain/github.py` (server,
       authoritative) and `dashboard/src/validation.ts` (client,
       instant-feedback mirror) implement the same rules independently by

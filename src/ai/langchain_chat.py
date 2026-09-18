@@ -4,6 +4,12 @@ RepoAgent code keeps depending only on the provider protocol; LangChain
 types stay inside this adapter. Structured output uses the model's native
 ``with_structured_output`` (tool/JSON-schema calling) when requested, and
 the result is still validated by RepoAgent's own ``structured_generate``.
+
+Rate limiting reuses the same proactive ``SlidingWindowLimiter`` gatekeeper
+that ``GroqProvider``/``OpenAIChatProvider`` apply (``ai/throttle.py``), so a
+LangChain-backed provider configured for a rate-limited vendor blocks under
+the same shared, deterministic per-minute budget rather than bypassing it.
+Reactive 429 backoff is vendor-specific and stays with those two adapters.
 """
 
 import json
@@ -13,6 +19,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 
 from repoagent.ai.chat import strict_schema
 from repoagent.ai.provider import CompletionRequest, CompletionResult, CompletionUsage
+from repoagent.ai.throttle import SlidingWindowLimiter, estimate_tokens, shared_limiter
 from repoagent.domain.errors import LLMError
 
 SCHEMA_INSTRUCTION = "\n\nReturn only one JSON object matching this JSON schema:\n"
@@ -46,14 +53,35 @@ def _usage(message: BaseMessage | None) -> CompletionUsage:
 
 class LangChainChatProvider:
     def __init__(
-        self, model: BaseChatModel, *, name: str | None = None, structured: bool = False
+        self,
+        model: BaseChatModel,
+        *,
+        name: str | None = None,
+        structured: bool = False,
+        tokens_per_minute: int | None = None,
+        requests_per_minute: int | None = None,
+        max_output_tokens: int = 2000,
+        limiter: SlidingWindowLimiter | None = None,
     ) -> None:
         self._model, self._structured = model, structured
         self.name = name or f"langchain:{model._llm_type}"
+        self._max_output_tokens = max_output_tokens
+        # ``limiter`` (explicit injection, e.g. for tests) takes precedence;
+        # otherwise a limiter is created only when a budget was requested,
+        # matching the Groq/OpenAI adapters' opt-in throttling.
+        self._limiter = limiter or shared_limiter(
+            f"langchain-rate:{self.name}", tokens_per_minute, requests_per_minute
+        )
 
     def complete(self, request: CompletionRequest) -> CompletionResult:
         native = self._structured and bool(request.output_schema)
         messages = messages_for(request, inline_schema=not native)
+        reservation = None
+        if self._limiter is not None:
+            chars = len(request.system) + len(request.user)
+            reservation = self._limiter.acquire(
+                estimate_tokens(chars, self._max_output_tokens)
+            )
         try:
             if native:
                 schema = strict_schema(request.output_schema)
@@ -73,4 +101,6 @@ class LangChainChatProvider:
             ) from None
         model = getattr(raw, "response_metadata", {}).get("model_name", self.name)
         usage = _usage(raw if isinstance(raw, AIMessage) else None)
+        if reservation is not None:
+            self._limiter.settle(reservation, usage.input_tokens + usage.output_tokens)
         return CompletionResult(text=text, model=str(model), usage=usage)

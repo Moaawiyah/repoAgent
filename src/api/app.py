@@ -58,7 +58,9 @@ def create_app(
         context = ApiContext(
             client=client or RepoAgent(settings=settings),
             policy=ApiPolicy(settings),
-            jobs=LocalJobQueue(store, settings.api_max_workers),
+            jobs=LocalJobQueue(
+                store, settings.api_max_workers, settings.workflow_task_timeout
+            ),
             store=store,
             provider=llm_provider_from_settings(settings),
         )

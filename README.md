@@ -199,8 +199,16 @@ and `export-obsidian` remain available unchanged for inspection-only use.
   RepairGraph only on explicit request.
 - **Limits** (`domain/limits.py`, `ai/budget.py`): investigation iterations,
   repair attempts/revisions, discovery candidates, LLM calls, tokens, sandbox
-  timeout/output, and a task deadline, all enforced by code. There is no LLM
-  watchdog agent.
+  timeout/output, and a task deadline, all enforced by code. A deterministic
+  **watchdog** (`adapters/job_queue.py`, plain `threading.Timer`, no LLM)
+  marks a job `FAILED` at the task deadline regardless of what step it's
+  stuck in — closing the gap where `BudgetedProvider`'s deadline only checks
+  at LLM call boundaries — guarded so a late natural completion can never
+  overwrite an already-reported timeout. There is no LLM watchdog agent.
+- **Rate-limit gatekeeper** (`ai/throttle.py`): a shared, per-key sliding
+  token/request budget. `GroqProvider`, `OpenAIChatProvider`, and
+  `LangChainChatProvider` all go through the same one — no adapter bypasses
+  it.
 
 LangChain (`langchain-core`) is used only at the edges:
 `LangChainChatProvider` adapts any LangChain chat model to the `LLMProvider`
