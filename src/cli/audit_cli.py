@@ -27,12 +27,45 @@ def register_audit(app: typer.Typer) -> None:
                 help="Send the top verified finding into the repair pipeline.",
             ),
         ] = False,
+        execute: Annotated[
+            bool,
+            typer.Option(
+                "--execute",
+                help="With --repair: validate the repair in a disposable Docker "
+                "sandbox copy (M7: review, tests, retries).",
+            ),
+        ] = False,
+        max_attempts: Annotated[
+            int | None, typer.Option("--max-attempts", min=1, max=10)
+        ] = None,
+        timeout: Annotated[
+            int | None, typer.Option("--timeout", min=1, max=3600, help="Seconds.")
+        ] = None,
         json: Json = False,
     ) -> None:
         """Discover evidence-backed candidate issues; never modifies the repository."""
+        if (execute and not repair) or (
+            not execute and (max_attempts is not None or timeout is not None)
+        ):
+            typer.echo(
+                "Invalid input: --execute requires --repair, and "
+                "--max-attempts/--timeout require --execute",
+                err=True,
+            )
+            raise typer.Exit(2)
         with errors():
-            report = client(ctx).audit(source, limit=limit, repair=repair)
+            report = client(ctx).audit(
+                source,
+                limit=limit,
+                repair=repair,
+                execute=execute,
+                max_attempts=max_attempts,
+                timeout=timeout,
+            )
             output(report, json)
+            validated = report.validated_repair
+            if validated is not None and validated.status != "validated":
+                raise typer.Exit(1)
 
 
 __all__ = ["register_audit", "render_audit", "AuditReport"]

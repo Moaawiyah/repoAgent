@@ -39,7 +39,7 @@ STATUS = (
 )
 
 
-def _error(_: Request, error: RepoAgentError) -> JSONResponse:
+def _error(_: Request, error: Exception) -> JSONResponse:
     code = next((status for kind, status in STATUS if isinstance(error, kind)), 400)
     detail = "Storage operation failed" if code == 500 else str(error)[:500]
     return JSONResponse(status_code=code, content={"detail": detail})

@@ -48,7 +48,9 @@ class DockerSandboxRunner:
     def session(
         self, repository: Path, plan: ValidationPlan, limits: SandboxLimits
     ) -> Iterator[DockerSession]:
-        builder = DockerCommandBuilder(self._image, limits)
+        builder = DockerCommandBuilder(
+            self._image, limits, python_paths=plan.python_paths
+        )
         policy = CommandPolicy(limits.allowed_commands)
         for spec in plan.commands:
             policy.argv(spec)

@@ -1,0 +1,73 @@
+{
+  "run_id": "20260925T034754Z-b6ba84",
+  "suite": "real-repair",
+  "experiments": [
+    {
+      "experiment": "full",
+      "mode": "repair",
+      "tasks_attempted": 20,
+      "successes": 0,
+      "success_rate": 0.0,
+      "validated_repairs": 0,
+      "hidden_tests_resolved": 0,
+      "localization_measured": 19,
+      "file_localization": 0.0526,
+      "symbol_localization": 0.0526,
+      "k": 5,
+      "retrieval": {
+        "bm25": {
+          "recall_at_k": 0.6317,
+          "mrr": 0.7225,
+          "hit_at_k": 0.85,
+          "ndcg_at_k": 0.5041
+        },
+        "hybrid": {
+          "recall_at_k": 0.5692,
+          "mrr": 0.7292,
+          "hit_at_k": 0.85,
+          "ndcg_at_k": 0.5099
+        },
+        "hybrid_graph": {
+          "recall_at_k": 0.5333,
+          "mrr": 0.675,
+          "hit_at_k": 0.75,
+          "ndcg_at_k": 0.517
+        },
+        "vector": {
+          "recall_at_k": 0.4133,
+          "mrr": 0.4892,
+          "hit_at_k": 0.7,
+          "ndcg_at_k": 0.3274
+        }
+      },
+      "avg_attempts": 0.0,
+      "avg_retrieval_calls": 3.65,
+      "avg_llm_calls": 4.0,
+      "avg_input_tokens": 9082.85,
+      "avg_output_tokens": 1550.5,
+      "avg_prompt_chars": 33375.4,
+      "avg_duration_seconds": 255.3444,
+      "files_changed": 0,
+      "lines_added": 0,
+      "lines_removed": 0,
+      "timeouts": 0,
+      "sandbox_failures": 0,
+      "patch_failures": 0,
+      "failures": {
+        "insufficient_evidence": 12,
+        "localization_failure": 2,
+        "provider_error": 5,
+        "validation_unavailable": 1
+      },
+      "failure_stages": {
+        "investigation": 12,
+        "provider_schema": 5,
+        "retrieval": 2,
+        "sandbox_setup": 1
+      },
+      "first_attempt_successes": 0,
+      "regressions": 0,
+      "hidden_test_success_rate": 0.0
+    }
+  ]
+}

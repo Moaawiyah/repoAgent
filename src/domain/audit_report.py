@@ -7,6 +7,7 @@ from repoagent.domain.audit import CandidateIssue, VerificationStatus
 from repoagent.domain.errors import AuditError
 from repoagent.domain.investigation import Issue
 from repoagent.domain.repair import RepairReport
+from repoagent.domain.repair_execution import ValidatedRepairReport
 
 
 class AuditMetrics(AnalysisModel):
@@ -34,6 +35,8 @@ class AuditReport(AnalysisModel):
     candidates: list[CandidateIssue] = Field(default_factory=list)
     metrics: AuditMetrics = Field(default_factory=AuditMetrics)
     repair: RepairReport | None = None
+    validated_repair: ValidatedRepairReport | None = None
+    repair_candidate_id: str | None = None
     error: str | None = None
 
     def by_status(self, status: VerificationStatus) -> list[CandidateIssue]:

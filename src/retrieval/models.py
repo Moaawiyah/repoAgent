@@ -44,6 +44,9 @@ class CodeChunk(AnalysisModel):
     parent: str | None = None
     docstring: str | None = None
     imports: list[str] = Field(default_factory=list)
+    # Exact graph node for this chunk (``name`` or ``name#N`` for duplicate
+    # qualified names); None only in indexes built before node identity.
+    node_id: str | None = None
 
     @property
     def search_text(self) -> str:
@@ -121,7 +124,11 @@ def repository_identifier(root: str) -> str:
 def make_chunk_id(
     repository_id: str, file_path: str, qualified_name: str, source: str
 ) -> str:
-    """Stable chunk identity: repository + file + symbol + source hash."""
+    """Stable chunk identity: repository + file + symbol + source hash.
+
+    ``qualified_name`` is the symbol's graph node ID, which differs from
+    the plain qualified name only for duplicates (``name#2``).
+    """
     source_hash = hashlib.sha256(source.encode()).hexdigest()
     key = f"{repository_id}|{file_path}|{qualified_name}|{source_hash}"
     return hashlib.sha256(key.encode()).hexdigest()[:16]

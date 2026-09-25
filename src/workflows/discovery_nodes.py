@@ -22,6 +22,7 @@ from repoagent.graph.builder import RepositoryGraphBuilder
 from repoagent.ports.index_store import IndexStore
 from repoagent.ports.sandbox import SandboxRunner
 from repoagent.retrieval.embeddings import EmbeddingProvider
+from repoagent.workflows.guards import required
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,7 @@ class DiscoveryNodes:
         return {"handle": loader(state.source)}
 
     def analyze(self, state: DiscoveryState) -> dict:
-        spec = RepositorySpec(source=state.handle.path)
+        spec = RepositorySpec(source=required(state.handle, "handle").path)
         analysis = RepositoryAnalyzer().analyze(spec)
         graph = RepositoryGraphBuilder().build(analysis)
         root = Path(analysis.repository_root)
@@ -69,7 +70,7 @@ class DiscoveryNodes:
     def _run(self, state: DiscoveryState, detectors: list[Detector]) -> tuple:
         found, by_source = [], dict(state.by_source)
         for detector in detectors:
-            hits = detector.detect(state.context)
+            hits = detector.detect(required(state.context, "context"))
             found.extend(hits)
             by_source[detector.name] = by_source.get(detector.name, 0) + len(hits)
         return found, by_source
@@ -92,11 +93,11 @@ class DiscoveryNodes:
         return {"candidates": kept, "removed": removed}
 
     def enrich(self, state: DiscoveryState) -> dict:
-        deps, context = self._deps, state.context
+        deps, context = self._deps, required(state.context, "context")
         enriched = attach_evidence(
             deps.store,
             deps.embedding,
-            state.handle.path,
+            required(state.handle, "handle").path,
             context.root,
             context.graph,
             state.candidates,

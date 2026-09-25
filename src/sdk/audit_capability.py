@@ -29,10 +29,25 @@ class AuditCapability:
         *,
         limit: int | None = None,
         repair: bool = False,
+        execute: bool = False,
+        max_attempts: int | None = None,
+        timeout: int | None = None,
         provider: LLMProvider | None = None,
     ) -> AuditReport:
-        """Discover, verify, and (optionally) repair candidate issues."""
+        """Discover, verify, and (optionally) repair candidate issues.
+
+        ``execute=True`` (requires ``repair``) validates the repair of the
+        best verified finding in the M7 Docker sandbox.
+        """
         api = AuditApi(
             self._settings or Settings(), self.retrieval(), self._sandbox_runner
         )
-        return api.audit(source, limit=limit, repair=repair, provider=provider)
+        return api.audit(
+            source,
+            limit=limit,
+            repair=repair,
+            execute=execute,
+            max_attempts=max_attempts,
+            timeout=timeout,
+            provider=provider,
+        )

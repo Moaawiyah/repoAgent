@@ -24,6 +24,7 @@ from repoagent.domain.workflow_results import (
 )
 from repoagent.workflows.discovery_graph import DiscoveryGraph
 from repoagent.workflows.discovery_nodes import DiscoveryDeps
+from repoagent.workflows.guards import required
 from repoagent.workflows.progress import StageSink, ignore_stage
 from repoagent.workflows.repair_graph import RepairGraph, RepairPorts
 
@@ -126,9 +127,10 @@ class WorkflowApi:
         )
         bounded = limit if limit is not None else self.limits.discovery_candidates
         state = DiscoveryGraph(deps, progress).run(source, bounded)
+        handle = required(state.handle, "handle")
         return DiscoveryWorkflowResult(
-            repository=state.handle,
-            report=DiscoveryGraph.report(state, state.handle.source),
+            repository=handle,
+            report=DiscoveryGraph.report(state, handle.source),
             limits=self.limits,
             usage=self._usage(llm),
         )

@@ -104,7 +104,7 @@ class BenchmarkRunner:
             extra={"event": "benchmark_task", "task_id": task.task_id},
         )
         try:
-            fields = {"retrieval": self._executor.retrieval(task, path, config)}
+            fields = self._executor.retrieval(task, path, config)
             fields |= self._executor.execute(task, path, config)
         except LLMError as error:
             fields = _failure(FailureCategory.PROVIDER_ERROR, error)

@@ -13,6 +13,7 @@ Reactive 429 backoff is vendor-specific and stays with those two adapters.
 """
 
 import json
+from typing import Any, cast
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -33,7 +34,9 @@ def messages_for(request: CompletionRequest, *, inline_schema: bool) -> list:
     return [SystemMessage(content=system), HumanMessage(content=request.user)]
 
 
-def _text(message: BaseMessage) -> str:
+def _text(message: BaseMessage | None) -> str:
+    if message is None:
+        return ""
     content = message.content
     if isinstance(content, str):
         return content
@@ -87,7 +90,7 @@ class LangChainChatProvider:
                 schema = strict_schema(request.output_schema)
                 schema.setdefault("title", request.prompt_name)
                 runnable = self._model.with_structured_output(schema, include_raw=True)
-                output = runnable.invoke(messages)
+                output = cast(dict[str, Any], runnable.invoke(messages))
                 raw, parsed = output.get("raw"), output.get("parsed")
                 text = json.dumps(parsed) if parsed is not None else _text(raw)
             else:
@@ -101,6 +104,6 @@ class LangChainChatProvider:
             ) from None
         model = getattr(raw, "response_metadata", {}).get("model_name", self.name)
         usage = _usage(raw if isinstance(raw, AIMessage) else None)
-        if reservation is not None:
+        if reservation is not None and self._limiter is not None:
             self._limiter.settle(reservation, usage.input_tokens + usage.output_tokens)
         return CompletionResult(text=text, model=str(model), usage=usage)

@@ -17,12 +17,14 @@ from pathlib import Path
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel
 
+from repoagent.domain.errors import RepoAgentError
 from repoagent.domain.github import RepositoryHandle
 from repoagent.domain.investigation import Issue
 from repoagent.domain.repair import RepairReport
 from repoagent.domain.repair_execution import ValidatedRepairReport
 from repoagent.domain.workflow import StageStatus
 from repoagent.retrieval.persistence import IndexSummary
+from repoagent.workflows.guards import required
 from repoagent.workflows.outcomes import CURRENT, repair_outcomes
 from repoagent.workflows.progress import (
     REPAIR_NODE_STAGES,
@@ -76,7 +78,7 @@ class RepairGraph:
         return {"handle": handle}
 
     def _analyze(self, state: RepairWorkflowState) -> dict:
-        summary = self._ports.index(Path(state.handle.path))
+        summary = self._ports.index(Path(required(state.handle, "handle").path))
         files = f"{summary.python_files} Python files, {summary.chunk_count} chunks"
         self._record("analysis", StageStatus.DONE, files)
         edges = f"{summary.node_count} nodes, {summary.edge_count} edges"
@@ -84,13 +86,16 @@ class RepairGraph:
         return {"index": summary}
 
     def _repair(self, state: RepairWorkflowState) -> dict:
-        path = Path(state.handle.path)
+        path = Path(required(state.handle, "handle").path)
         return {"report": self._ports.repair(path, state.issue, state.execute)}
 
     def _finalize(self, state: RepairWorkflowState) -> dict:
-        for key, status, detail in repair_outcomes(state.report):
+        report = state.report
+        if report is None:
+            raise RepoAgentError("Workflow state is missing report")
+        for key, status, detail in repair_outcomes(report):
             self._record(self._current if key == CURRENT else key, status, detail)
-        self._record("report", StageStatus.DONE, state.report.status.value)
+        self._record("report", StageStatus.DONE, report.status.value)
         return {}
 
     def _build(self):

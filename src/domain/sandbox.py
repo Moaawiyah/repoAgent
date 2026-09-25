@@ -50,6 +50,8 @@ class SandboxLimits(AnalysisModel):
         {CommandKind.PYTEST, CommandKind.RUFF_CHECK}
     )
     dependencies: DependencyStrategy = DependencyStrategy.PROJECT
+    # Exact pins replacing detected project dependencies (reproducible runs).
+    pinned_requirements: tuple[str, ...] = ()
 
 
 class CommandSpec(AnalysisModel):
@@ -66,6 +68,8 @@ class ValidationPlan(AnalysisModel):
     requirements: list[str] = Field(default_factory=list)
     skipped_requirements: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    # Workspace-relative import roots (e.g. ``src``) added to PYTHONPATH.
+    python_paths: list[str] = Field(default_factory=list)
 
     def has(self, kind: CommandKind) -> bool:
         return any(command.kind == kind for command in self.commands)

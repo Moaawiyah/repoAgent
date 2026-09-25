@@ -5,6 +5,35 @@ detailed writeups in `docs/milestones.md` and `docs/architecture.md`; commands
 and behavior described here must match the current `README.md` — if they
 diverge, the code and README are correct, not this file.
 
+## Unreleased — Retrieval quality, audit → validated repair, real-bug suite
+
+- Graph nodes and code chunks share one stable identity (`symbol_node_ids`);
+  duplicate qualified names (`foo#2`) now map to their own chunk, and graph
+  expansion starts from the exact node of each seed.
+- Optional semantic embeddings for any OpenAI-compatible endpoint
+  (`REPOAGENT_EMBEDDING_PROVIDER=openai`). Token-dense inputs that a local
+  server rejects are retried alone and halved.
+- Configurable graph policies (edge weights, uncertain-edge weight, seed
+  cap, gating, depth). The default is now `calls_inherits`, chosen from
+  pooled measurements on 45 tasks.
+- Semantic and LLM listwise rerankers, and an optional rerank pool. NDCG@K
+  added to retrieval metrics. Retrieval benchmark arms (`graph_*`,
+  `rerank_*`).
+- `repoagent audit --repair --execute` runs the best verified finding
+  through the unchanged M7 validated repair.
+- Real-bug suite `benchmarks/real_repair.json` (20 SWE-rebench tasks) with
+  pinned images and requirements, the `benchmark-import swerebench` and
+  `benchmark-verify` commands, per-stage failure reporting, and image
+  digests in manifests.
+- Sandbox: pinned requirements (`SANDBOX_PINNED_REQUIREMENTS` or
+  `SANDBOX_REQUIREMENTS_FILE`) and a `src/` import root for src-layout
+  projects.
+- Investigator: a mistyped citation no longer aborts hypothesis generation,
+  and shortened symbol names are grounded to cited evidence. New
+  `best_hypothesis` repair ablation.
+- `REPOAGENT_LLM_REASONING_EFFORT`, mypy with the pydantic plugin
+  (`scripts/typecheck.py`, clean), and pip-audit in CI.
+
 ## Unreleased — Web workflows (RepairGraph / DiscoveryGraph)
 
 - Added `RepairGraph` and `DiscoveryGraph`: top-level LangGraph workflows

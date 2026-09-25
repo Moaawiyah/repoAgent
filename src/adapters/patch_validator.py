@@ -62,7 +62,10 @@ class StaticPatchValidator:
     def _parse(self, text: str) -> dict[str, list[list[str]]]:
         if not text.strip() or "GIT binary patch" in text or "Binary files" in text:
             raise ValueError("Patch must be a non-binary unified diff")
-        lines, changes, current, hunk = text.splitlines(), {}, None, None
+        lines = text.splitlines()
+        changes: dict[str, list[list[str]]] = {}
+        current: str | None = None
+        hunk: list[str] | None = None
         for line in lines:
             if line.startswith("--- "):
                 continue

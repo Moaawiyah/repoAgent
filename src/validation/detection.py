@@ -7,7 +7,6 @@ dependency lines (URLs, paths, options, markers) are skipped and recorded.
 import tomllib
 from pathlib import Path
 
-from repoagent.domain.errors import UnsafeCommandError
 from repoagent.domain.sandbox import (
     CommandKind,
     CommandSpec,
@@ -15,33 +14,16 @@ from repoagent.domain.sandbox import (
     SandboxLimits,
     ValidationPlan,
 )
-from repoagent.validation.policy import (
-    TOOL_REQUIREMENTS,
-    normalize_requirement,
-    requirement_name,
+from repoagent.validation.policy import TOOL_REQUIREMENTS, requirement_name
+from repoagent.validation.requirements import (
+    import_roots,
+    normalize_lines,
+    project_lines,
 )
-from repoagent.validation.setup_cfg import (
-    declares_pytest,
-    install_requires_lines,
-    read_ini,
+from repoagent.validation.requirements import (
+    read_config as _read,
 )
-
-MAX_CONFIG_BYTES = 1_000_000
-REQUIREMENT_FILES = (
-    "requirements.txt",
-    "requirements-dev.txt",
-    "requirements-test.txt",
-)
-
-
-def _read(path: Path) -> str:
-    if (
-        path.is_symlink()
-        or not path.is_file()
-        or path.stat().st_size > MAX_CONFIG_BYTES
-    ):
-        return ""
-    return path.read_text(encoding="utf-8", errors="replace")
+from repoagent.validation.setup_cfg import declares_pytest, read_ini
 
 
 class ProjectDetector:
@@ -78,6 +60,7 @@ class ProjectDetector:
             requirements=requirements,
             skipped_requirements=skipped,
             notes=notes,
+            python_paths=import_roots(root),
         )
 
     @staticmethod
@@ -99,16 +82,17 @@ class ProjectDetector:
         strategy = self._limits.dependencies
         if strategy == DependencyStrategy.NONE:
             return [], []
-        project_specs, skipped = [], []
+        project_specs: list[str] = []
+        skipped: list[str] = []
         if strategy == DependencyStrategy.PROJECT:
-            project_specs, skipped = self._normalize(
-                self._project_lines(root, pyproject)
+            project_specs, skipped = normalize_lines(
+                project_lines(root, pyproject, self._limits.pinned_requirements)
             )
         # A project's own pin for a tool we also need (pytest, ruff) wins over
         # our default: forcing an unrelated version range alongside it is a
         # frequent, avoidable cause of "pip install" ResolutionImpossible.
         project_names = {requirement_name(spec) for spec in project_specs}
-        tool_specs, _ = self._normalize(
+        tool_specs, _ = normalize_lines(
             TOOL_REQUIREMENTS[c.kind]
             for c in commands
             if requirement_name(TOOL_REQUIREMENTS[c.kind]) not in project_names
@@ -118,32 +102,3 @@ class ProjectDetector:
             if spec not in accepted:
                 accepted.append(spec)
         return accepted, skipped
-
-    @staticmethod
-    def _normalize(lines) -> tuple[list[str], list[str]]:
-        accepted, skipped = [], []
-        for line in lines:
-            if not line.strip() or line.lstrip().startswith("#"):
-                continue
-            try:
-                spec = normalize_requirement(line)
-            except UnsafeCommandError:
-                skipped.append(line.strip()[:120])
-                continue
-            if spec not in accepted:
-                accepted.append(spec)
-        return accepted, skipped
-
-    @staticmethod
-    def _project_lines(root: Path, pyproject: dict) -> list[str]:
-        project = pyproject.get("project", {}) if isinstance(pyproject, dict) else {}
-        lines = list(project.get("dependencies", []))
-        optional = project.get("optional-dependencies", {})
-        groups = pyproject.get("dependency-groups", {})
-        for name in ("test", "tests", "dev"):
-            lines.extend(optional.get(name, []))
-            lines.extend(item for item in groups.get(name, []) if isinstance(item, str))
-        for name in REQUIREMENT_FILES:
-            lines.extend(_read(root / name).splitlines())
-        lines.extend(install_requires_lines(read_ini(_read(root / "setup.cfg"))))
-        return [line for line in lines if isinstance(line, str)]

@@ -1,6 +1,7 @@
 """Hybrid + graph retrieval: RRF seeds, bounded expansion, RRF fusion."""
 
 from repoagent.graph.expansion import GraphExpander
+from repoagent.graph.policy import GraphPolicy
 from repoagent.retrieval.fusion import rrf_fuse
 from repoagent.retrieval.models import (
     Evidence,
@@ -18,7 +19,8 @@ class HybridGraphRetriever:
     expander derives related candidates along static relationships; the
     two rankings are fused again with the same RRF implementation, so no
     fusion logic is duplicated. Evidence distinguishes lexical, vector,
-    and graph contributions per result.
+    and graph contributions per result. The :class:`GraphPolicy` decides
+    how many seeds expand and how much the graph ranking weighs.
     """
 
     def __init__(
@@ -26,23 +28,36 @@ class HybridGraphRetriever:
         hybrid: Retriever,
         expander: GraphExpander,
         rrf_k: int = 60,
+        policy: GraphPolicy | None = None,
     ) -> None:
         self._hybrid = hybrid
         self._expander = expander
         self._rrf_k = rrf_k
+        self._policy = policy or GraphPolicy()
 
     def search(self, query: str, top_k: int) -> list[RetrievalResult]:
         depth = max(top_k * 2, 10)
         seeds = self._hybrid.search(query, depth)
-        graph_results = self._expander.expand(seeds, depth)
+        expandable = seeds[: self._policy.max_seeds]
+        graph_results = self._expander.expand(expandable, depth)
         fused = rrf_fuse(
             [seeds, graph_results],
             self._rrf_k,
             source=RetrievalSource.HYBRID_GRAPH,
+            weights=[1.0, self._graph_weight(seeds)],
         )
         return [
             self._annotated(result, seeds, graph_results) for result in fused[:top_k]
         ]
+
+    def _graph_weight(self, seeds: list[RetrievalResult]) -> float:
+        """Down-weight expansion when every retriever ranks one seed first."""
+        confident = self._policy.confident_weight
+        if confident is None or not seeds:
+            return self._policy.fusion_weight
+        ranks = [note.rank for note in seeds[0].evidence if note.rank is not None]
+        agreed = len(ranks) >= 2 and all(rank == 1 for rank in ranks)
+        return confident if agreed else self._policy.fusion_weight
 
     @staticmethod
     def _annotated(
@@ -75,6 +90,7 @@ def build_graph_retriever(
     strategy: RetrievalStrategy,
     hybrid: Retriever,
     expander: GraphExpander | None,
+    policy: GraphPolicy | None = None,
 ) -> Retriever:
     """Select the retriever for hybrid strategies, enforcing graph data."""
     if strategy is RetrievalStrategy.HYBRID_GRAPH:
@@ -82,5 +98,5 @@ def build_graph_retriever(
             from repoagent.domain.errors import RetrievalError
 
             raise RetrievalError("Index has no repository graph; rebuild the index")
-        return HybridGraphRetriever(hybrid, expander)
+        return HybridGraphRetriever(hybrid, expander, policy=policy)
     return hybrid

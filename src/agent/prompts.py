@@ -35,7 +35,12 @@ TASKS = {
 }
 
 
-PROMPT_FIELDS = ("evidence_id", "file_path", "qualified_name", "start_line")
+PROMPT_FIELDS: tuple[str, ...] = (
+    "evidence_id",
+    "file_path",
+    "qualified_name",
+    "start_line",
+)
 PROMPT_FIELDS += ("end_line", "retrieval_source", "relevance", "reason")
 
 

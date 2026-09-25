@@ -14,8 +14,19 @@ class Settings(BaseSettings):
     max_retries: int = Field(default=3, ge=0, le=20)
     context_budget: int = Field(default=16000, gt=0)
     execution_timeout: int = Field(default=300, gt=0)
-    embedding_provider: Literal["hashing"] = "hashing"
+    embedding_provider: Literal["hashing", "openai"] = "hashing"
     embedding_dimension: int = Field(default=256, gt=0, le=4096)
+    embedding_model: str = "text-embedding-3-small"
+    embedding_base_url: str | None = None
+    embedding_api_key: SecretStr | None = None
+    embedding_batch_size: int = Field(default=32, ge=1, le=2048)
+    embedding_timeout: int = Field(default=120, ge=1, le=600)
+    graph_policy: str = "calls_inherits"  # == graph.policy.DEFAULT_GRAPH_POLICY
+    graph_edge_weights: dict[str, float] = Field(default_factory=dict)
+    graph_unresolved_weight: float | None = Field(default=None, ge=0, le=1)
+    graph_max_depth: int | None = Field(default=None, ge=1, le=4)
+    reranker: Literal["keyword", "semantic", "llm"] = "keyword"
+    rerank_candidates: int | None = Field(default=None, ge=1, le=100)
     llm_provider: Literal["none", "groq", "openai"] = "none"
     llm_model: str = "openai/gpt-oss-20b"
     llm_api_key: SecretStr | None = None
@@ -33,6 +44,11 @@ class Settings(BaseSettings):
     llm_tokens_per_minute: int | None = Field(default=None, ge=100, le=10_000_000)
     llm_requests_per_minute: int | None = Field(default=None, ge=1, le=100_000)
     llm_structured_output: Literal["response_format", "tool_call"] = "response_format"
+    # Sent as OpenAI ``reasoning_effort`` only when set (e.g. ``none`` turns off
+    # hidden reasoning on Ollama-served thinking models such as qwen3).
+    llm_reasoning_effort: Literal["none", "minimal", "low", "medium", "high"] | None = (
+        None
+    )
     repair_max_revisions: int = Field(default=2, ge=0, le=5)
     repair_max_attempts: int = Field(default=3, ge=1, le=10)
     repair_max_reinvestigations: int = Field(default=1, ge=0, le=3)
@@ -46,9 +62,11 @@ class Settings(BaseSettings):
     sandbox_dependencies: Literal["none", "tools", "project"] = "project"
     sandbox_cleanup: Literal["always", "keep_failed_workspace"] = "always"
     sandbox_allowed_commands: list[Literal["pytest", "ruff_check"]] = Field(
-        default_factory=lambda: ["pytest", "ruff_check"]
+        default=["pytest", "ruff_check"]
     )
     sandbox_workspace_dir: Path | None = None
+    sandbox_pinned_requirements: list[str] = Field(default_factory=list)
+    sandbox_requirements_file: Path | None = None
     api_allowed_roots: list[Path] = Field(default_factory=list)
     api_execution_repositories: list[Path] = Field(default_factory=list)
     api_token: SecretStr | None = None
@@ -61,6 +79,26 @@ class Settings(BaseSettings):
     workflow_max_llm_calls: int = Field(default=200, ge=1, le=5000)
     workflow_max_tokens: int | None = Field(default=None, ge=1000, le=100_000_000)
     workflow_task_timeout: int = Field(default=1800, ge=30, le=14_400)
+
+    @field_validator("graph_policy")
+    @classmethod
+    def known_graph_policy(cls, value: str) -> str:
+        from repoagent.graph.policy import GRAPH_POLICIES
+
+        if value not in GRAPH_POLICIES:
+            raise ValueError(f"graph_policy must be one of {sorted(GRAPH_POLICIES)}")
+        return value
+
+    @field_validator("graph_edge_weights")
+    @classmethod
+    def known_edge_types(cls, value: dict[str, float]) -> dict[str, float]:
+        from repoagent.graph.models import EdgeType
+
+        for key, weight in value.items():
+            EdgeType(key)
+            if not 0 <= weight <= 1:
+                raise ValueError("graph edge weights must be within [0, 1]")
+        return value
 
     @field_validator("data_dir")
     @classmethod

@@ -201,6 +201,18 @@ REPOAGENT_LLM_BASE_URL=https://api.z.ai/api/paas/v4/
 REPOAGENT_LLM_API_KEY=your-private-key
 ```
 
+A local Ollama model works the same way (no key is sent anywhere). Thinking
+models such as `qwen3` otherwise generate hidden reasoning before every JSON
+answer; `REPOAGENT_LLM_REASONING_EFFORT=none` turns that off:
+
+```dotenv
+REPOAGENT_LLM_PROVIDER=openai
+REPOAGENT_LLM_MODEL=qwen3:4b
+REPOAGENT_LLM_BASE_URL=http://localhost:11434/v1
+REPOAGENT_LLM_API_KEY=ollama
+REPOAGENT_LLM_REASONING_EFFORT=none
+```
+
 There is no production fake-model fallback. Both adapters proactively throttle
 requests to `REPOAGENT_LLM_TOKENS_PER_MINUTE`/`REPOAGENT_LLM_REQUESTS_PER_MINUTE`
 when set, retry HTTP 429s within `REPOAGENT_LLM_RATE_LIMIT_RETRIES` (honoring
@@ -317,10 +329,40 @@ behind the `IndexStore` and `EmbeddingProvider` protocols.
 
 Settings use the `REPOAGENT_` prefix; see `.env.example`. Task data defaults
 to `~/.repoagent/tasks.sqlite3`; retrieval indexes are stored under
-`<data-dir>/indexes/`. Embedding configuration: `REPOAGENT_EMBEDDING_PROVIDER`
-(`hashing` deterministic local provider) and `REPOAGENT_EMBEDDING_DIMENSION`.
-An index records its provider and dimension; searching with a mismatched
-provider fails with a clear error instead of silently degrading. Logs contain
+`<data-dir>/indexes/`. An index records its embedding provider and
+dimension; searching with a mismatched provider fails with a clear error
+instead of silently degrading.
+
+**Embeddings** (`REPOAGENT_` prefix):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `EMBEDDING_PROVIDER` | `hashing` | `hashing` (deterministic, offline; tests) or `openai` (any OpenAI-compatible `/v1/embeddings` server: OpenAI, Ollama, vLLM, LM Studio, text-embeddings-inference) |
+| `EMBEDDING_DIMENSION` | `256` | Hashing vector size (semantic dimensions are probed from the model) |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | Semantic model name; the index records `openai:<model>` |
+| `EMBEDDING_BASE_URL` | unset | Endpoint, e.g. `http://localhost:11434/v1` for Ollama |
+| `EMBEDDING_API_KEY` | unset | Falls back to `LLM_API_KEY`; local servers need none |
+| `EMBEDDING_BATCH_SIZE` | `32` | Inputs per request |
+| `EMBEDDING_TIMEOUT` | `120` | Seconds per request |
+
+Token-dense chunks (numeric tables) that a local server rejects are retried
+alone and halved until they fit; each is logged as `embed_truncated`.
+Retrieval code depends only on the `EmbeddingProvider` protocol; the SDK also
+accepts any LangChain `Embeddings` through `LangChainEmbeddingProvider`.
+
+**Graph expansion and reranking:**
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `GRAPH_POLICY` | `calls_inherits` | Preset: `calls_inherits` (default: only CALLS and INHERITS edges are traversed), `legacy` (all edge types, the pre-2026-09 behavior), `focused`, `resolved_only`, `seeds5`, `gated`, `seeds5_gated`, `depth1`, `half_weight` |
+| `GRAPH_EDGE_WEIGHTS` | `{}` | JSON overrides, e.g. `{"imports": 0, "calls": 1.0}`; weight 0 is never traversed |
+| `GRAPH_UNRESOLVED_WEIGHT` | preset | Per-hop multiplier for statically uncertain edges; 0 never traverses them |
+| `GRAPH_MAX_DEPTH` | preset (2) | Traversal depth bound (1-4) |
+| `RERANKER` | `keyword` | `keyword` (deterministic), `semantic` (embedding similarity fused with rank), `llm` (listwise, code-aware, uses the configured LLM) |
+| `RERANK_CANDIDATES` | unset | Pool reranked into `top_k`; unset reranks only the `top_k` results (the Investigator's behavior) |
+
+Preset semantics live in `repoagent.graph.policy.GRAPH_POLICIES`; measured
+effects are in [benchmarks.md](benchmarks.md). Logs contain
 allowlisted metadata only. Target code is never imported or executed by
 analysis, indexing, or search.
 
@@ -460,7 +502,12 @@ seconds), `REPAIR_MAX_ATTEMPTS`, `REPAIR_MAX_REINVESTIGATIONS`, `SANDBOX_IMAGE`,
 `SANDBOX_MAX_OUTPUT_BYTES`, `SANDBOX_INSTALL_TIMEOUT`, `SANDBOX_NETWORK`
 (`install_only`|`none`), `SANDBOX_DEPENDENCIES` (`project`|`tools`|`none`),
 `SANDBOX_CLEANUP` (`always`|`keep_failed_workspace`),
-`SANDBOX_ALLOWED_COMMANDS`, `SANDBOX_WORKSPACE_DIR`.
+`SANDBOX_ALLOWED_COMMANDS`, `SANDBOX_WORKSPACE_DIR`,
+`SANDBOX_PINNED_REQUIREMENTS` (JSON list of exact pins that replace the
+project's declared ranges) and `SANDBOX_REQUIREMENTS_FILE` (a pinned
+requirements file, merged with the list). src-layout projects (`src/<pkg>/`)
+get `/workspace/src` on `PYTHONPATH`, so their tests import the package
+without installing it.
 
 **Security controls.** Every target is treated as hostile:
 
@@ -491,7 +538,8 @@ limits to its VM. Rootless Docker and user-namespace remapping are not configure
 by RepoAgent. Running RepoAgent as root maps the container to `nobody`, which may
 not be able to read the private workspace. Image references are validated but not
 digest-pinned by default; pin `REPOAGENT_SANDBOX_IMAGE` by digest for
-reproducibility.
+reproducibility. Benchmark tasks carry their own digest-pinned image, and run
+manifests record `sandbox_image_digest` plus each task's image.
 
 **Other limitations.** Only Python/pytest (+Ruff) validation is supported; target
 repositories needing services, databases, compilers, or sdists will fail with

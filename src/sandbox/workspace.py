@@ -20,7 +20,15 @@ SKIP_DIRS = frozenset(
     {".git", ".hg", ".svn", ".venv", "venv", "node_modules", "__pycache__"}
     | {".mypy_cache", ".pytest_cache", ".ruff_cache", ".tox", ".nox"}
 )
-SECRET_PATTERNS = (".env", ".env.*", ".netrc", ".pypirc", ".npmrc", "*.pem", "*.key")
+SECRET_PATTERNS: tuple[str, ...] = (
+    ".env",
+    ".env.*",
+    ".netrc",
+    ".pypirc",
+    ".npmrc",
+    "*.pem",
+    "*.key",
+)
 SECRET_PATTERNS += ("id_rsa*", "id_ed25519*", "*.p12", ".git-credentials")
 FINGERPRINT_SKIP = frozenset({".venv", "venv", "node_modules"})
 

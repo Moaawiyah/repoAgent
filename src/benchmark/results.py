@@ -24,6 +24,26 @@ class FailureCategory(StrEnum):
     VALIDATION_UNAVAILABLE = "validation_unavailable"
 
 
+# Coarse pipeline stage for every fine-grained category, so reports can say
+# where a run broke: retrieval vs investigation vs provider vs patching, etc.
+FAILURE_STAGES: dict[FailureCategory, str] = {
+    FailureCategory.LOCALIZATION_FAILURE: "retrieval",
+    FailureCategory.INSUFFICIENT_EVIDENCE: "investigation",
+    FailureCategory.INCORRECT_ROOT_CAUSE: "investigation",
+    FailureCategory.PROVIDER_ERROR: "provider_schema",
+    FailureCategory.PATCH_GENERATION_FAILURE: "patch_generation",
+    FailureCategory.PATCH_APPLY_FAILURE: "patch_generation",
+    FailureCategory.REVIEW_REJECTION: "reviewer_rejection",
+    FailureCategory.SETUP_FAILURE: "sandbox_setup",
+    FailureCategory.SANDBOX_FAILURE: "sandbox_setup",
+    FailureCategory.VALIDATION_UNAVAILABLE: "sandbox_setup",
+    FailureCategory.TEST_FAILURE: "validation_test",
+    FailureCategory.REGRESSION: "validation_test",
+    FailureCategory.TIMEOUT: "validation_test",
+    FailureCategory.MAX_ATTEMPTS: "validation_test",
+}
+
+
 class Localization(AnalysisModel):
     """Whether the agent's primary conclusion or patch hit labeled locations."""
 
@@ -40,6 +60,7 @@ class RetrievalScore(AnalysisModel):
     recall_at_k: float
     mrr: float
     hit_at_k: float
+    ndcg_at_k: float = 0.0
 
 
 class PatchMetrics(AnalysisModel):

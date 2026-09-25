@@ -108,6 +108,8 @@ uv run repoagent graphify ./project --artifacts artifacts   # writes artifacts/p
 uv run repoagent --env-file .env investigate ./project "Uppercase emails cannot log in"
 uv run repoagent --env-file .env repair ./project "Uppercase emails cannot log in"            # static proposal
 uv run repoagent --env-file .env repair ./project "Uppercase emails cannot log in" --execute  # Docker-validated
+uv run repoagent --env-file .env audit ./project --limit 20                        # discover + verify issues
+uv run repoagent --env-file .env audit ./project --repair --execute --max-attempts 3  # best verified finding -> M7
 uv run repoagent benchmark fixtures --mode retrieval --k 5
 uv run repoagent --env-file .env benchmark fixtures --mode repair --ablation full --ablation no_retry
 uv run repoagent benchmark-report <run_id>
@@ -153,6 +155,34 @@ sandbox and a deterministic provider. `VALIDATED` requires a completed sandbox
 run, an unchanged original repository, pytest exit code 0, and no new Ruff
 violations relative to the baseline. A reviewer's approval alone never
 produces `VALIDATED`.
+
+## Example audit → validated repair
+
+`audit --repair --execute` sends the highest-confidence VERIFIED finding
+through the unchanged M7 pipeline. The steps are evidence retrieval,
+Investigator, Developer, Reviewer, a Docker baseline and patched run,
+failure analysis, and bounded retries. Every run happens in a disposable
+copy; the audited checkout is never modified (a test hashes it before and
+after). `--execute` requires `--repair`. The command exits 1 when a
+validated repair was attempted but did not reach `VALIDATED`.
+
+```sh
+uv run repoagent --env-file .env audit ./project --repair --execute --json > audit.json
+```
+
+```python
+from repoagent import RepoAgent
+
+report = RepoAgent().audit("./project", repair=True, execute=True, max_attempts=3)
+# validated | max_attempts | no_verified_candidate | ...
+print(report.metrics.repair_status)
+print(report.repair_candidate_id)  # which finding was repaired
+if report.validated_repair:
+    print(report.validated_repair.final_proposal.unified_diff)
+```
+
+Without `--execute`, `--repair` keeps the M6 behavior: a reviewed patch
+proposal with no code execution.
 
 ## RAG architecture
 
@@ -281,10 +311,30 @@ With 6 tasks and a single nondeterministic sample per configuration, this
 difference is not statistically meaningful. Provider errors were schema
 violations in model output (Groq `json_validate_failed`).
 
+**2026-09 retrieval work** (45 tasks: stages A–C plus the new real-issue
+suite D; pooled Recall@5 / MRR):
+
+| Configuration | Hashing embeddings | Semantic embeddings (`qwen3-embedding:0.6b`) |
+| --- | --- | --- |
+| BM25 + vector (hybrid) | 0.495 / 0.492 | 0.529 / 0.478 |
+| + graph, `legacy` (all edges) | 0.563 / 0.526 | 0.587 / 0.568 |
+| + graph, `calls_inherits` (**new default**) | 0.566 / 0.544 | **0.607 / 0.637** |
+| + graph (`legacy`) + semantic reranker | 0.557 / 0.484 | **0.667** / 0.613 |
+
+On suite D (20 real issues) semantic hybrid+graph reaches 0.721 / 0.875,
+compared with 0.508 / 0.650 for hashing. The "skip graph when evidence is
+strong" heuristics made results worse and remain ablations only.
+
+**Real-bug repair (suite D, 20 Docker-verified SWE-rebench tasks, local
+`qwen3:4b`):** 0/20 validated. Failures by stage: investigation 12,
+provider/schema 5, retrieval 2, sandbox setup 1. This run exposed two
+hypothesis-validation defects, which are now fixed. The post-fix run was not
+completed, so the effect of the fixes is not measured. Details are in
+[docs/benchmarks.md](docs/benchmarks.md).
+
 | Repair metric | Value |
 | --- | --- |
-| Validated repairs, repair success rate (hidden tests), average attempts | not measured |
-| `no_reviewer`, `single_pass`, `no_retry` ablations; repair failure breakdown | not measured |
+| Hosted-model repair success rate, `no_reviewer`/`single_pass`/`no_retry` ablations | not measured |
 
 ## API and dashboard
 
@@ -364,12 +414,13 @@ otherwise repairs are investigated, patched and reviewed statically.
 - **Unmeasured repair performance.** Live-model repair success and most
   ablations are not measured. The live localization run covers only 6 tasks,
   one sample each, on a free-tier model.
-- **Evaluation scope.** Benchmark subsets are small (6, 10, and 9 tasks)
-  without confidence intervals. BugsInPy and SWE-bench tasks are evaluated
-  for retrieval only, because repair execution needs per-project environments
-  that RepoAgent does not build.
-- **Analysis depth.** Python only. Hashing embeddings are lexical, not
-  semantic. Call resolution is name-based.
+- **Evaluation scope.** Suites are small (6, 10, 9, and 20 tasks) and have
+  no confidence intervals. Stage D repair was measured only with a local 4B
+  model. Its tasks are Python 3.9 projects whose test suites pass in a pinned
+  sandbox, which biases toward self-contained projects.
+- **Analysis depth.** Python only. The default hashing embeddings are
+  lexical; semantic embeddings are opt-in and need an embedding endpoint.
+  Call resolution is name-based.
 - **Validation scope.** Validation supports pytest and Ruff. Dependency
   manifests changed by a patch are not reinstalled.
 - **Confidence.** Confidence values are uncalibrated.

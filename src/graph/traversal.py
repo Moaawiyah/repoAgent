@@ -13,6 +13,7 @@ class TraversalConfig:
     max_depth: int = 2
     max_nodes: int = 32
     allowed_edge_types: frozenset[EdgeType] | None = None
+    include_unresolved: bool = True
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,8 @@ def traverse(
     """Breadth-first expansion from seed nodes within strict bounds.
 
     Seeds start at distance 0 but are not included in the results (they
-    are already known). A visited set prevents cycles from looping, and
+    are already known). Uncertain edges are skipped when the config
+    excludes them. A visited set prevents cycles from looping, and
     ``max_nodes`` caps the total number of discovered nodes. Results are
     ordered by distance then node ID for determinism.
     """
@@ -47,9 +49,11 @@ def traverse(
         node_id, distance, path = queue.pop(0)
         if distance >= bounds.max_depth:
             continue
-        for edge in store.neighbors(node_id, allowed):
+        for edge in store.neighbors(
+            node_id, set(allowed) if allowed is not None else None
+        ):
             neighbor = edge.target
-            if neighbor in visited:
+            if neighbor in visited or not (edge.resolved or bounds.include_unresolved):
                 continue
             visited.add(neighbor)
             if len(found) >= bounds.max_nodes:

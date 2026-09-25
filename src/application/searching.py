@@ -5,6 +5,7 @@ import logging
 from repoagent.domain.errors import EmbeddingProviderError
 from repoagent.domain.repository import RepositorySpec
 from repoagent.graph.expansion import GraphExpander
+from repoagent.graph.policy import DEFAULT_GRAPH_POLICY, GRAPH_POLICIES, GraphPolicy
 from repoagent.graph.store import store_from_snapshot
 from repoagent.ports.index_store import IndexStore
 from repoagent.retrieval.embeddings import EmbeddingProvider
@@ -32,10 +33,14 @@ class SearchService:
         store: IndexStore,
         provider: EmbeddingProvider,
         reranker: Reranker | None = None,
+        graph_policy: GraphPolicy | None = None,
+        rerank_candidates: int | None = None,
     ) -> None:
         self._store = store
         self._provider = provider
         self._reranker = reranker
+        self._policy = graph_policy or GRAPH_POLICIES[DEFAULT_GRAPH_POLICY]
+        self._pool = rerank_candidates
         self._retrievers: dict[tuple[str, str], Retriever] = {}
         self._snapshots: dict[str, IndexSnapshot] = {}
 
@@ -64,6 +69,7 @@ class SearchService:
                 self._provider,
                 snapshot.vectors,
                 expander=self._expander(snapshot),
+                policy=self._policy,
             )
         return self._retrievers[key]
 
@@ -78,7 +84,12 @@ class SearchService:
         spec = RepositorySpec(source=request.repository)
         repo_id = repository_identifier(spec.source)
         retriever = self.retriever(request.repository, request.strategy)
-        results = retriever.search(request.query, request.top_k)
+        # A pool larger than top_k lets reranking change what is returned, not
+        # just the order; None keeps rerank-within-top_k (the agent default).
+        depth = request.top_k
+        if request.rerank and self._pool:
+            depth = max(depth, self._pool)
+        results = retriever.search(request.query, depth)
         reranked = False
         if request.rerank and results:
             reranker = self._reranker or KeywordOverlapReranker()
@@ -101,8 +112,12 @@ class SearchService:
         if snapshot.graph is None or not snapshot.graph.nodes:
             return None
         store = store_from_snapshot(snapshot.graph)
-        chunks_by_qualified = {chunk.qualified_name: chunk for chunk in snapshot.chunks}
-        return GraphExpander(store, chunks_by_qualified)
+        return GraphExpander(
+            store,
+            snapshot.chunks,
+            traversal=self._policy.traversal(),
+            scoring=self._policy.scoring(),
+        )
 
     def _check_provider(self, snapshot: IndexSnapshot) -> None:
         if (

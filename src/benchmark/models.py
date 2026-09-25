@@ -46,6 +46,19 @@ class ValidationCriteria(AnalysisModel):
     hidden_tests: dict[str, str] = Field(default_factory=dict, max_length=20)
 
 
+class TaskEnvironment(AnalysisModel):
+    """Pinned execution environment making a repair task reproducible.
+
+    ``image`` should be digest-pinned (``python:3.11-slim@sha256:...``);
+    ``requirements`` are exact pins that replace the project's declared
+    dependency ranges inside the sandbox.
+    """
+
+    image: str | None = Field(default=None, max_length=255)
+    python: str | None = Field(default=None, pattern=r"^3\.\d{1,2}$")
+    requirements: list[str] = Field(default_factory=list, max_length=500)
+
+
 class BenchmarkTask(AnalysisModel):
     task_id: str = Field(pattern=r"^[A-Za-z0-9_.:@+-]{1,120}$")
     benchmark: str = Field(pattern=r"^[a-z0-9_-]{1,60}$")
@@ -57,6 +70,7 @@ class BenchmarkTask(AnalysisModel):
     gold_patch: str | None = Field(default=None, max_length=200_000)
     validation: ValidationCriteria = ValidationCriteria()
     expected_outcome: ExpectedOutcome = ExpectedOutcome.LOCALIZATION_ONLY
+    environment: TaskEnvironment | None = None
 
 
 class BenchmarkSuite(AnalysisModel):

@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+from repoagent.analysis.identity import symbol_node_ids
 from repoagent.analysis.models import CodeSymbol, SymbolType
 from repoagent.analysis.results import FileAnalysis, RepositoryAnalysis
 from repoagent.retrieval.models import CodeChunk, make_chunk_id
@@ -50,19 +51,20 @@ class CodeChunker:
             symbol for symbol in file.symbols if symbol.symbol_type is SymbolType.MODULE
         )
         chunks: list[CodeChunk] = []
+        node_ids = {id(sym): node for sym, node in symbol_node_ids(file.symbols)}
         for symbol in file.symbols:
             if symbol.symbol_type is SymbolType.CLASS:
                 body = self._residual(lines, self._nested(symbol, file), symbol)
-                chunks.append(self._build(file, module, symbol, body))
+                chunks.append(self._build(file, module, symbol, body, node_ids))
             elif symbol.symbol_type in (SymbolType.FUNCTION, SymbolType.METHOD):
                 body = [
                     (number, lines[number - 1])
                     for number in range(symbol.start_line, symbol.end_line + 1)
                 ]
-                chunks.append(self._build(file, module, symbol, body))
+                chunks.append(self._build(file, module, symbol, body, node_ids))
         residual = self._residual(lines, self._top_level(file), None)
         if any(text.strip() for _, text in residual):
-            chunks.append(self._build(file, module, module, residual))
+            chunks.append(self._build(file, module, module, residual, node_ids))
         return chunks
 
     @staticmethod
@@ -105,14 +107,17 @@ class CodeChunker:
         module: CodeSymbol,
         symbol: CodeSymbol,
         body: list[tuple[int, str]],
+        node_ids: dict[int, str],
     ) -> CodeChunk:
         numbers = [number for number, _ in body]
         source = "\n".join(text for _, text in body)
         symbol_type = SymbolType.MODULE if symbol is module else symbol.symbol_type
+        # The node ID equals the qualified name for unique symbols, so chunk
+        # IDs only change for duplicates, which now never collide.
+        node_id = node_ids[id(symbol)]
         return CodeChunk(
-            chunk_id=make_chunk_id(
-                self._scope, file.path, symbol.qualified_name, source
-            ),
+            chunk_id=make_chunk_id(self._scope, file.path, node_id, source),
+            node_id=node_id,
             repository_id=self._repo,
             file_path=file.path,
             language=self.language,

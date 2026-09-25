@@ -5,7 +5,7 @@ from collections import Counter
 from pydantic import Field
 
 from repoagent.analysis.models import AnalysisModel
-from repoagent.benchmark.results import FailureCategory, TaskResult
+from repoagent.benchmark.results import FAILURE_STAGES, FailureCategory, TaskResult
 
 
 def _mean(values: list[float]) -> float | None:
@@ -39,6 +39,10 @@ class ExperimentSummary(AnalysisModel):
     sandbox_failures: int
     patch_failures: int
     failures: dict[str, int] = Field(default_factory=dict)
+    failure_stages: dict[str, int] = Field(default_factory=dict)
+    first_attempt_successes: int = 0
+    regressions: int = 0
+    hidden_test_success_rate: float | None = None
 
 
 class BenchmarkSummary(AnalysisModel):
@@ -77,7 +81,7 @@ def summarize_experiment(name: str, results: list[TaskResult]) -> ExperimentSumm
                         if s in r.retrieval
                     ]
                 )
-                for metric in ("recall_at_k", "mrr", "hit_at_k")
+                for metric in ("recall_at_k", "mrr", "hit_at_k", "ndcg_at_k")
             }
             for s in strategies
         },
@@ -96,6 +100,20 @@ def summarize_experiment(name: str, results: list[TaskResult]) -> ExperimentSumm
         patch_failures=failures.get(FailureCategory.PATCH_APPLY_FAILURE, 0)
         + failures.get(FailureCategory.PATCH_GENERATION_FAILURE, 0),
         failures=dict(sorted(failures.items())),
+        failure_stages=dict(
+            sorted(
+                Counter(
+                    FAILURE_STAGES[r.failure_category]
+                    for r in results
+                    if r.failure_category
+                ).items()
+            )
+        ),
+        first_attempt_successes=sum(r.success and r.attempts == 1 for r in repair),
+        regressions=failures.get(FailureCategory.REGRESSION, 0),
+        hidden_test_success_rate=_mean(
+            [float(r.hidden_tests_passed is True) for r in repair]
+        ),
     )
 
 

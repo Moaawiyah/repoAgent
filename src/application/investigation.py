@@ -15,6 +15,7 @@ from repoagent.domain.investigation import (
     InvestigationReport,
     Issue,
 )
+from repoagent.graph.policy import GraphPolicy
 from repoagent.graph.store import store_from_snapshot
 from repoagent.ports.index_store import IndexStore
 from repoagent.retrieval.embeddings import EmbeddingProvider
@@ -47,17 +48,19 @@ class InvestigationService:
         store: IndexStore,
         embedding_provider: EmbeddingProvider,
         llm_provider: LLMProvider | None,
+        graph_policy: GraphPolicy | None = None,
     ) -> None:
         self._store = store
         self._embedding = embedding_provider
         self._llm = llm_provider
+        self._policy = graph_policy
 
     def investigate(
         self, request: InvestigateRequest, limits: InvestigationLimits | None = None
     ) -> InvestigationReport:
         """Investigate the issue; never modifies the target repository."""
         provider = require_provider(self._llm, "investigations")
-        search = SearchService(self._store, self._embedding)
+        search = SearchService(self._store, self._embedding, graph_policy=self._policy)
         graph = None
         snapshot = search.snapshot(request.repository)
         if request.use_graph and snapshot.graph is not None and snapshot.graph.nodes:

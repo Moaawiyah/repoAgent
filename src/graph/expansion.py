@@ -15,21 +15,26 @@ from repoagent.retrieval.models import (
 class GraphExpander:
     """Expands strong seed results along graph relationships.
 
-    Seeds (from BM25/vector/hybrid retrieval) are mapped to graph nodes
-    via their qualified names, traversed within bounds, and scored by
-    seed rank, graph distance, and relationship weight. Provenance keeps
-    the full relationship path for each candidate.
+    Each seed (from BM25/vector/hybrid retrieval) starts from its exact
+    graph node (``chunk.node_id``), and every visited node maps back to
+    its exact chunk via ``node.chunk_id``, so symbols sharing a qualified
+    name stay distinct. Candidates are scored by seed rank, graph
+    distance, and relationship weight; provenance keeps the full path.
     """
 
     def __init__(
         self,
         store: GraphStore,
-        chunks_by_qualified: dict[str, CodeChunk],
+        chunks: list[CodeChunk],
         traversal: TraversalConfig | None = None,
         scoring: ScoringConfig | None = None,
     ) -> None:
         self._store = store
-        self._chunks = chunks_by_qualified
+        self._by_id = {chunk.chunk_id: chunk for chunk in chunks}
+        # Fallback for indexes persisted before nodes carried chunk IDs.
+        self._by_node = {
+            chunk.node_id or chunk.qualified_name: chunk for chunk in chunks
+        }
         self._traversal = traversal or TraversalConfig()
         self._scoring = scoring or ScoringConfig()
 
@@ -37,7 +42,7 @@ class GraphExpander:
         """Return graph-derived candidates ranked by deterministic score."""
         scored: dict[str, tuple[float, RetrievalResult]] = {}
         for seed in seeds:
-            node = self._store.get_node(seed.chunk.qualified_name)
+            node = self._store.get_node(seed.chunk.node_id or seed.chunk.qualified_name)
             if node is None:
                 continue
             for visited in traverse(self._store, [node.node_id], self._traversal):
@@ -55,12 +60,19 @@ class GraphExpander:
             for position, (_, result) in enumerate(ranked[:top_k], start=1)
         ]
 
+    def _chunk_for(self, node_id: str) -> CodeChunk | None:
+        node = self._store.get_node(node_id)
+        if node is not None and node.chunk_id in self._by_id:
+            return self._by_id[node.chunk_id]
+        return self._by_node.get(node_id)
+
     def _candidate(self, seed: RetrievalResult, visited) -> RetrievalResult | None:
-        chunk = self._chunks.get(visited.node_id)
+        chunk = self._chunk_for(visited.node_id)
         if chunk is None:
             return None
         edge_types = [edge.edge_type for edge in visited.path]
-        score = self._scoring.score(seed.rank, visited.distance, edge_types)
+        uncertain = sum(not edge.resolved for edge in visited.path)
+        score = self._scoring.score(seed.rank, visited.distance, edge_types, uncertain)
         if score <= 0.0:
             return None
         hops = [

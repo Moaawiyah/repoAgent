@@ -9,6 +9,7 @@ from repoagent.evaluation.models import (
     StrategyMetrics,
     aggregate,
     case_metrics,
+    ndcg_at_k,
 )
 from repoagent.retrieval.models import RetrievalStrategy, SearchRequest
 
@@ -27,9 +28,12 @@ class RetrievalEvaluator:
     is hardcoded or estimated.
     """
 
-    def __init__(self, service: SearchService, repository: str) -> None:
+    def __init__(
+        self, service: SearchService, repository: str, rerank: bool = False
+    ) -> None:
         self._service = service
         self._repository = repository
+        self._rerank = rerank
 
     def evaluate(
         self,
@@ -49,11 +53,10 @@ class RetrievalEvaluator:
     def _evaluate_strategy(
         self, strategy: RetrievalStrategy, cases: list[RetrievalCase], k: int
     ) -> StrategyMetrics:
-        metrics = [
-            case_metrics(case, self._search(case.query, strategy, k), k)
-            for case in cases
-        ]
-        return aggregate(strategy, metrics, k)
+        runs = [(case, self._search(case.query, strategy, k)) for case in cases]
+        metrics = [case_metrics(case, results, k) for case, results in runs]
+        ndcgs = [ndcg_at_k(case, results, k) for case, results in runs]
+        return aggregate(strategy, metrics, k, ndcgs)
 
     def _search(self, query: str, strategy: RetrievalStrategy, k: int) -> list:
         request = SearchRequest(
@@ -61,5 +64,6 @@ class RetrievalEvaluator:
             query=query,
             strategy=strategy,
             top_k=k,
+            rerank=self._rerank,
         )
         return self._service.search(request).results

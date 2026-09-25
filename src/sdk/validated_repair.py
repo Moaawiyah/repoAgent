@@ -16,8 +16,22 @@ from repoagent.domain.investigation import InvestigationLimits, Issue
 from repoagent.domain.repair_execution import ValidatedRepairReport
 from repoagent.domain.sandbox import CommandKind, SandboxLimits
 from repoagent.ports.sandbox import SandboxRunner
+from repoagent.retrieval.configured import graph_policy_from_settings
 from repoagent.sandbox.docker_runner import DockerSandboxRunner
 from repoagent.sdk.retrieval import RetrievalApi
+
+
+def pinned_requirements(settings: Settings) -> tuple[str, ...]:
+    """Explicit pins from settings plus an optional requirements file."""
+    pins = list(settings.sandbox_pinned_requirements)
+    if settings.sandbox_requirements_file is not None:
+        text = settings.sandbox_requirements_file.read_text(encoding="utf-8")
+        pins += [
+            line.strip()
+            for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+    return tuple(dict.fromkeys(pins))
 
 
 def sandbox_limits(settings: Settings, timeout: int | None) -> SandboxLimits:
@@ -34,6 +48,7 @@ def sandbox_limits(settings: Settings, timeout: int | None) -> SandboxLimits:
             CommandKind(item) for item in settings.sandbox_allowed_commands
         ),
         dependencies=settings.sandbox_dependencies,
+        pinned_requirements=pinned_requirements(settings),
     )
 
 
@@ -85,9 +100,9 @@ class ValidatedRepairApi:
             context_chars=settings.investigation_context_chars,
         )
         llm = provider or llm_provider_from_settings(settings)
-        report = ValidatedRepairService(store, embedding, llm, runner, limits).repair(
-            request
-        )
+        policy = graph_policy_from_settings(settings)
+        service = ValidatedRepairService(store, embedding, llm, runner, limits, policy)
+        report = service.repair(request)
         write_report(
             settings.data_dir / "repairs",
             report.task_id,

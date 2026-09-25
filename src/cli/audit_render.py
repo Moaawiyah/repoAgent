@@ -1,5 +1,6 @@
 """Human-readable presentation for repository audit reports."""
 
+from repoagent.cli.execution_render import render_validated_repair
 from repoagent.cli.repair_render import render_repair
 from repoagent.domain.audit import CandidateIssue, VerificationStatus
 from repoagent.domain.audit_report import AuditReport
@@ -40,6 +41,16 @@ def render_audit(report: AuditReport) -> str:
         lines.extend(["", _finding(candidate)])
     if report.repair is not None:
         lines.extend(["", "Repair Attempt:", render_repair(report.repair)])
+    if report.validated_repair is not None:
+        lines.extend(
+            [
+                "",
+                f"Validated Repair (finding {report.repair_candidate_id}):",
+                render_validated_repair(report.validated_repair),
+            ]
+        )
+    elif report.metrics.repair_status == "no_verified_candidate":
+        lines.extend(["", "Repair: no verified finding to repair"])
     if report.error:
         lines.extend(["", f"Error: {report.error}"])
     return "\n".join(lines)

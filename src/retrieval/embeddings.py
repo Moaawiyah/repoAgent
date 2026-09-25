@@ -17,8 +17,11 @@ class EmbeddingProvider(Protocol):
     added without touching retrieval code.
     """
 
-    name: str
-    dimension: int
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def dimension(self) -> int: ...
 
     def embed(self, texts: list[str]) -> list[list[float]]: ...
 
@@ -66,7 +69,16 @@ def _normalize(vector: list[float]) -> list[float]:
 
 
 def provider_from_settings(settings: Settings) -> EmbeddingProvider:
-    """Build the embedding provider selected by configuration."""
+    """Build the embedding provider selected by configuration.
+
+    ``hashing`` (default) is offline and deterministic; ``openai`` is any
+    OpenAI-compatible semantic embedding endpoint. The adapter is imported
+    lazily so offline use never loads a vendor SDK.
+    """
+    if settings.embedding_provider == "openai":
+        from repoagent.ai.embeddings import OpenAIEmbeddingProvider
+
+        return OpenAIEmbeddingProvider(settings)
     if settings.embedding_provider != "hashing":
         raise ValueError(f"Unknown embedding provider: {settings.embedding_provider}")
     return HashingEmbeddingProvider(settings.embedding_dimension)

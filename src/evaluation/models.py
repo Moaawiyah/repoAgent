@@ -1,5 +1,7 @@
 """Retrieval evaluation cases and metric computation."""
 
+import math
+
 from pydantic import Field, field_validator
 
 from repoagent.analysis.models import AnalysisModel
@@ -45,6 +47,7 @@ class StrategyMetrics(AnalysisModel):
     mrr: float
     hit_rate_at_k: float
     precision_at_k: float
+    ndcg_at_k: float = 0.0
 
 
 class EvaluationReport(AnalysisModel):
@@ -84,10 +87,33 @@ def case_metrics(
     return recall, mrr, hit_rate, precision
 
 
+def ndcg_at_k(case: RetrievalCase, results: list[RetrievalResult], k: int) -> float:
+    """Binary-relevance NDCG@k; a result earns gain only for new expected items.
+
+    The ideal ranking places one distinct expected item at each of the
+    first ``min(|expected|, k)`` ranks.
+    """
+    expected = case.expected
+    if not expected or k < 1:
+        return 0.0
+    seen: set[str] = set()
+    dcg = 0.0
+    for rank, result in enumerate(results[:k], start=1):
+        new = case.matched_items(result) - seen
+        if new:
+            seen |= new
+            dcg += 1.0 / math.log2(rank + 1)
+    ideal = sum(
+        1.0 / math.log2(rank + 1) for rank in range(1, min(len(expected), k) + 1)
+    )
+    return dcg / ideal
+
+
 def aggregate(
     strategy: RetrievalStrategy,
     metrics: list[tuple[float, float, float, float]],
     k: int,
+    ndcgs: list[float] | None = None,
 ) -> StrategyMetrics:
     """Average per-case metrics into one strategy row."""
     total = len(metrics) or 1
@@ -104,4 +130,5 @@ def aggregate(
         mrr=sum(mrrs) / total,
         hit_rate_at_k=sum(hits) / total,
         precision_at_k=sum(precisions) / total,
+        ndcg_at_k=sum(ndcgs or []) / total,
     )

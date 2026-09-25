@@ -33,7 +33,8 @@ class RepositoryMaterializer:
                 raise RepositoryInvalid(f"Benchmark repository not found: {ref.source}")
             return path
         owner, name = ref.source.removesuffix(".git").split("/")[-2:]
-        target = self._cache / f"{owner}__{name}@{ref.commit[:12]}"
+        commit = ref.commit or ""  # remote refs are validated to carry a SHA
+        target = self._cache / f"{owner}__{name}@{commit[:12]}"
         ready = target.parent / f"{target.name}.ready"
         if ready.exists() and target.is_dir():
             return target
@@ -42,7 +43,7 @@ class RepositoryMaterializer:
         steps = [
             ["init", "--quiet"],
             ["remote", "add", "origin", ref.source],
-            ["fetch", "--quiet", "--depth", "1", "origin", ref.commit],
+            ["fetch", "--quiet", "--depth", "1", "origin", commit],
             ["checkout", "--quiet", "--detach", "FETCH_HEAD"],
         ]
         for step in steps:
@@ -53,5 +54,5 @@ class RepositoryMaterializer:
                 shutil.rmtree(target, ignore_errors=True)
                 raise RepositoryInvalid(f"Could not fetch {ref.source}@{ref.commit}")
         shutil.rmtree(target / ".git", ignore_errors=True)
-        ready.write_text(ref.commit or "")
+        ready.write_text(commit)
         return target

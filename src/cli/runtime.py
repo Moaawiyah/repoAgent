@@ -1,9 +1,10 @@
 """Lazy dependency wiring and safe CLI error presentation."""
 
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, cast
 
 import typer
 from pydantic import ValidationError
@@ -33,7 +34,7 @@ from repoagent.domain.repair_execution import ValidatedRepairReport
 from repoagent.domain.tasks import TaskEvent, TaskRecord
 from repoagent.evaluation.models import EvaluationReport
 from repoagent.export.obsidian import ExportSummary
-from repoagent.graph.models import GraphInspection, GraphSummary
+from repoagent.graph.models import GraphInspection, GraphSnapshot, GraphSummary
 from repoagent.graph.serializer import GraphifyResult
 from repoagent.logging import configure_logging
 from repoagent.retrieval.models import SearchResponse
@@ -87,7 +88,8 @@ def output(
     | InvestigationReport
     | RepairReport
     | ValidatedRepairReport
-    | AuditReport,
+    | AuditReport
+    | GraphSnapshot,
     as_json: bool,
 ) -> None:
     if as_json:
@@ -98,7 +100,7 @@ def output(
         )
         typer.echo(json.dumps(data))
         return
-    renderers = (
+    renderers: tuple[tuple[type, Callable[[Any], str]], ...] = (
         (TaskRecord, lambda v: f"Task {v.id}: {v.status}\n{v.message or ''}"),
         (RepositoryAnalysis, render_analysis),
         (IndexSummary, render_index),
@@ -117,5 +119,5 @@ def output(
         if isinstance(value, value_type):
             typer.echo(renderer(value))
             return
-    for event in value:
+    for event in cast(list[TaskEvent], value):
         typer.echo(f"{event.sequence}: {event.name} ({event.status}) {event.message}")

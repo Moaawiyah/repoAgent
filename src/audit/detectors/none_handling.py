@@ -44,7 +44,7 @@ def _access_lines(tree: ast.AST, target: str) -> list[int]:
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             owner = node.func.value
         if isinstance(owner, ast.Name) and owner.id == target:
-            lines.append(node.lineno)
+            lines.append(owner.lineno)
     return lines
 
 

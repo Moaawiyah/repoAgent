@@ -1,6 +1,7 @@
 """Common structured-output request/response mapping, independent of SDK classes."""
 
 from copy import deepcopy
+from typing import Any
 
 from repoagent.ai.provider import CompletionRequest, CompletionResult, CompletionUsage
 
@@ -75,7 +76,7 @@ def arguments(
     return payload
 
 
-def completion(response: object, model: str) -> CompletionResult:
+def completion(response: Any, model: str) -> CompletionResult:
     """Read the model's answer from either a tool call or message content."""
     usage = getattr(response, "usage", None)
     message = response.choices[0].message

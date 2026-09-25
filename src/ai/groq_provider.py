@@ -27,7 +27,7 @@ class GroqProvider:
         settings = self._settings
         try:
             with Groq(
-                api_key=settings.llm_api_key.get_secret_value(),
+                api_key=_secret(settings),
                 timeout=settings.llm_timeout,
                 max_retries=0,
             ) as client:
@@ -71,3 +71,10 @@ def _schema_rejected(error: Exception) -> bool:
     body = getattr(error, "body", None)
     detail = body.get("error", {}) if isinstance(body, dict) else {}
     return isinstance(detail, dict) and detail.get("code") == "json_validate_failed"
+
+
+def _secret(settings: Settings) -> str:
+    key = settings.llm_api_key
+    if key is None:
+        raise LLMError("Groq provider requires REPOAGENT_LLM_API_KEY")
+    return key.get_secret_value()

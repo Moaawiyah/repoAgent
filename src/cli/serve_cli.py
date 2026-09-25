@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 
 from repoagent.cli.runtime import client, errors
+from repoagent.config import Settings
 
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 
@@ -29,13 +30,14 @@ def register_serve(app: typer.Typer) -> None:
 
         with errors():
             agent = client(ctx)
-            settings = agent._settings.model_copy(
+            base = agent._settings or Settings()
+            settings = base.model_copy(
                 update={
                     "api_allowed_roots": [
-                        *agent._settings.api_allowed_roots, *(allow_root or [])
+                        *base.api_allowed_roots, *(allow_root or [])
                     ],
                     "api_execution_repositories": [
-                        *agent._settings.api_execution_repositories,
+                        *base.api_execution_repositories,
                         *(execution_repo or []),
                     ],
                 }

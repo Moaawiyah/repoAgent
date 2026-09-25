@@ -30,7 +30,7 @@ def parse_pytest(result: CommandResult) -> TestSummary:
             key = "errors" if label.startswith("error") else label
             if key in counts:
                 counts[key] += int(number)
-    failures = []
+    failures: list[TestFailure] = []
     for line in lines:
         match = _OUTCOME.match(line.strip())
         if match and len(failures) < MAX_FAILURES:
@@ -51,7 +51,8 @@ def parse_pytest(result: CommandResult) -> TestSummary:
 
 def parse_ruff(result: CommandResult) -> LintSummary:
     """Parse ``--output-format=concise`` diagnostics."""
-    violations, total = [], None
+    violations: list[LintViolation] = []
+    total: int | None = None
     for line in result.stdout.splitlines():
         match = _RUFF.match(line.strip())
         if match and len(violations) < MAX_VIOLATIONS:

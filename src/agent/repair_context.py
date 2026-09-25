@@ -16,7 +16,12 @@ SYSTEM = (
 )
 
 
-EVIDENCE_FIELDS = ("evidence_id", "file_path", "qualified_name", "start_line")
+EVIDENCE_FIELDS: tuple[str, ...] = (
+    "evidence_id",
+    "file_path",
+    "qualified_name",
+    "start_line",
+)
 EVIDENCE_FIELDS += ("end_line", "relevance")
 DEVELOPER_EVIDENCE, REVIEWER_EVIDENCE, SNIPPET_CHARS = 12, 6, 1200
 

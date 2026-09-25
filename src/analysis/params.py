@@ -15,7 +15,7 @@ def unparse(node) -> str | None:
 
 def decorators(node) -> list[str]:
     """Render decorator expressions of a class or function."""
-    return [unparse(item) for item in node.decorator_list]
+    return [text for item in node.decorator_list if (text := unparse(item))]
 
 
 def extract_parameters(node) -> list[Parameter]:

@@ -30,7 +30,7 @@ class OpenAIChatProvider:
         settings = self._settings
         try:
             with OpenAI(
-                api_key=settings.llm_api_key.get_secret_value(),
+                api_key=_secret(settings),
                 base_url=settings.llm_base_url,
                 timeout=settings.llm_timeout,
                 max_retries=0,
@@ -41,6 +41,8 @@ class OpenAIChatProvider:
                     settings.llm_max_output_tokens,
                     settings.llm_structured_output,
                 )
+                if settings.llm_reasoning_effort is not None:
+                    payload["reasoning_effort"] = settings.llm_reasoning_effort
                 response = RateLimitRetry(
                     settings.llm_rate_limit_retries, settings.llm_rate_limit_max_wait
                 ).call(
@@ -60,6 +62,13 @@ class OpenAIChatProvider:
                 "OpenAI request failed; check configuration and rate limits"
             ) from None
         return completion(response, settings.llm_model)
+
+
+def _secret(settings: Settings) -> str:
+    key = settings.llm_api_key
+    if key is None:
+        raise LLMError("OpenAI provider requires REPOAGENT_LLM_API_KEY")
+    return key.get_secret_value()
 
 
 def llm_provider_from_settings(settings: Settings) -> LLMProvider | None:

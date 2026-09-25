@@ -21,41 +21,37 @@ class ReasoningNodes:
         except LLMError as error:
             return failure(state, "hypothesis_created", str(error))
         known = {e.evidence_id: e for e in state.evidence}
-        hypotheses = []
+        hypotheses, discarded = [], 0
         for draft in drafts.hypotheses:
             cited = [*draft.supporting_evidence_ids, *draft.contradicting_evidence_ids]
-            if any(identifier not in known for identifier in cited):
-                return {**failure(state, "hypothesis_created"), "usage": usage}
+            discarded += sum(identifier not in known for identifier in cited)
+            contradicting = [i for i in draft.contradicting_evidence_ids if i in known]
             supporting = [
                 identifier
                 for identifier in draft.supporting_evidence_ids
-                if known[identifier].relevance == EvidenceRelevance.RELEVANT
+                if identifier in known
+                and known[identifier].relevance == EvidenceRelevance.RELEVANT
             ]
-            if not supporting:
-                continue
-            supported_symbols = {
-                known[identifier].qualified_name for identifier in supporting
-            }
-            if (
-                not draft.affected_symbols
-                or not set(draft.affected_symbols) <= supported_symbols
-            ):
+            supported = {known[identifier].qualified_name for identifier in supporting}
+            symbols = grounded_symbols(draft.affected_symbols, supported)
+            if not supporting or not symbols:
                 continue
             confidence = (
-                min(draft.confidence, 0.6)
-                if draft.contradicting_evidence_ids
-                else draft.confidence
+                min(draft.confidence, 0.6) if contradicting else draft.confidence
             )
             hypotheses.append(
                 RootCauseHypothesis(
                     statement=draft.statement,
                     confidence=confidence,
                     supporting_evidence=supporting,
-                    contradicting_evidence=draft.contradicting_evidence_ids,
-                    affected_symbols=draft.affected_symbols,
+                    contradicting_evidence=contradicting,
+                    affected_symbols=symbols,
                     open_questions=draft.open_questions,
                 )
             )
+        if discarded and not hypotheses:
+            return {**failure(state, "hypothesis_created"), "usage": usage}
+        note = f"; discarded {discarded} unknown evidence IDs" if discarded else ""
         return {
             "hypotheses": hypotheses,
             "usage": usage,
@@ -63,6 +59,22 @@ class ReasoningNodes:
                 state,
                 "hypothesis_created",
                 "continue",
-                f"{len(hypotheses)} supported hypotheses",
+                f"{len(hypotheses)} supported hypotheses{note}",
             ),
         }
+
+
+def grounded_symbols(symbols: list[str], supported: set[str]) -> list[str]:
+    """Map each named symbol to the one cited qualified name it denotes.
+
+    Models often shorten names (``ulabel`` for ``idna.core.ulabel``). A name
+    counts only if it equals, or is a dotted suffix of, exactly one symbol
+    from the cited evidence; anything else stays ungrounded and is dropped.
+    """
+    grounded: list[str] = []
+    for symbol in symbols:
+        name = symbol.strip().removesuffix("()")
+        matches = [s for s in supported if s == name or s.endswith("." + name)]
+        if len(matches) == 1 and matches[0] not in grounded:
+            grounded.append(matches[0])
+    return grounded

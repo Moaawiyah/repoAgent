@@ -7,7 +7,7 @@ from repoagent.adapters.index_store import JsonIndexStore
 from repoagent.analysis.analyzer import RepositoryAnalyzer
 from repoagent.application.graphify import GraphifyService
 from repoagent.application.indexing import IndexService
-from repoagent.application.searching import SearchService
+from repoagent.application.search_factory import configured_search
 from repoagent.config import Settings
 from repoagent.domain.repository import RepositorySpec
 from repoagent.evaluation.evaluator import RetrievalEvaluator
@@ -17,16 +17,10 @@ from repoagent.graph.builder import RepositoryGraphBuilder
 from repoagent.graph.models import GraphSnapshot
 from repoagent.graph.serializer import GraphifyResult
 from repoagent.ports.index_store import IndexStore
-from repoagent.retrieval.embeddings import (
-    EmbeddingProvider,
-    provider_from_settings,
-)
-from repoagent.retrieval.models import (
-    RetrievalStrategy,
-    SearchRequest,
-    SearchResponse,
-)
+from repoagent.retrieval.embeddings import EmbeddingProvider, provider_from_settings
+from repoagent.retrieval.models import RetrievalStrategy, SearchRequest, SearchResponse
 from repoagent.retrieval.persistence import IndexSummary
+from repoagent.retrieval.rerank import Reranker
 
 
 class RetrievalApi:
@@ -75,7 +69,7 @@ class RetrievalApi:
             rerank=rerank,
         )
         store, provider = self._services()
-        return SearchService(store=store, provider=provider).search(request)
+        return configured_search(self._settings, store, provider).search(request)
 
     def evaluate(
         self,
@@ -84,16 +78,25 @@ class RetrievalApi:
         *,
         k: int = 5,
         strategies: Sequence[RetrievalStrategy] | None = None,
+        graph_policy: str | None = None,
+        reranker: str | Reranker | None = None,
+        rerank_candidates: int | None = None,
     ) -> EvaluationReport:
-        """Compare retrieval strategies on labeled cases (LLM-free)."""
-        store, provider = self._services()
-        service = SearchService(store=store, provider=provider)
-        evaluator = RetrievalEvaluator(service, repository=str(source))
-        return evaluator.evaluate(
-            cases,
-            k=k,
-            strategies=tuple(strategies) if strategies else None,
+        """Compare retrieval strategies on labeled cases.
+
+        LLM-free unless ``reranker`` is ``"llm"`` (or an LLM-backed
+        instance); ``graph_policy`` names a preset for hybrid_graph.
+        """
+        service = configured_search(
+            self._settings,
+            *self._services(),
+            graph_policy=graph_policy,
+            reranker=reranker,
+            rerank_candidates=rerank_candidates,
         )
+        evaluator = RetrievalEvaluator(service, str(source), reranker is not None)
+        chosen = tuple(strategies) if strategies else None
+        return evaluator.evaluate(cases, k=k, strategies=chosen)
 
     def graph(self, source: str | Path, *, commit: str | None = None) -> GraphSnapshot:
         """Build the repository code knowledge graph (M4)."""

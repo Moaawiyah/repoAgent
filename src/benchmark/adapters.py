@@ -7,6 +7,7 @@ Gold patches and tests remain evaluator-only fields.
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 from repoagent.benchmark.gold import expected_files
 from repoagent.benchmark.loaders import BenchmarkError
@@ -68,7 +69,7 @@ def import_bugsinpy(root: Path, bugs: list[str]) -> BenchmarkSuite:
     )
 
 
-def _tests(value: object) -> list[str]:
+def _tests(value: Any) -> list[str]:
     return list(json.loads(value) if isinstance(value, str) else value or [])
 
 

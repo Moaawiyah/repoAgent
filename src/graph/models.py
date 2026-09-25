@@ -27,7 +27,10 @@ class EdgeType(StrEnum):
 
 
 class GraphNode(AnalysisModel):
-    """A graph node; identity is the stable qualified name."""
+    """A graph node identified by qualified name (``#N`` for duplicates).
+
+    ``chunk_id`` is the explicit link to the node's exact code chunk.
+    """
 
     node_id: str
     node_type: NodeType

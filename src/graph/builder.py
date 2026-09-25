@@ -1,5 +1,6 @@
 """Builds the repository graph from M2 analysis and chunks."""
 
+from repoagent.analysis.identity import symbol_node_ids
 from repoagent.analysis.models import CallSite, RelationKind, SymbolType
 from repoagent.analysis.results import RepositoryAnalysis
 from repoagent.graph.models import (
@@ -36,12 +37,15 @@ class RepositoryGraphBuilder:
     family member is a real node, gets its own DEFINES/CONTAINS edges, and
     call sites are attributed to the specific family member whose line
     range contains the call — never guessed when that is ambiguous.
+    Chunks carry the same node ID (see :func:`symbol_node_ids`), so each
+    node — duplicates included — maps to exactly its own chunk.
     """
 
     def __init__(self, chunks: list[CodeChunk] | None = None) -> None:
-        self._chunk_ids = (
-            {chunk.qualified_name: chunk.chunk_id for chunk in chunks} if chunks else {}
-        )
+        self._chunk_ids = {
+            chunk.node_id or chunk.qualified_name: chunk.chunk_id
+            for chunk in chunks or []
+        }
 
     def build(self, analysis: RepositoryAnalysis) -> InMemoryGraphStore:
         store = InMemoryGraphStore()
@@ -57,12 +61,8 @@ class RepositoryGraphBuilder:
         for file in analysis.files:
             if file.error is not None:
                 continue
-            seen: dict[str, int] = {}
-            for symbol in file.symbols:
-                base = symbol.qualified_name
-                count = seen[base] = seen.get(base, 0) + 1
-                node_id = base if count == 1 else f"{base}#{count}"
-                families.setdefault(base, []).append(node_id)
+            for symbol, node_id in symbol_node_ids(file.symbols):
+                families.setdefault(symbol.qualified_name, []).append(node_id)
                 store.add_node(
                     GraphNode(
                         node_id=node_id,
@@ -73,7 +73,7 @@ class RepositoryGraphBuilder:
                         end_line=symbol.end_line,
                         parent=symbol.parent,
                         module=file.module_name,
-                        chunk_id=self._chunk_ids.get(base),
+                        chunk_id=self._chunk_ids.get(node_id),
                     )
                 )
         return families

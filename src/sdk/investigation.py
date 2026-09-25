@@ -12,6 +12,7 @@ from repoagent.domain.investigation import (
     InvestigationReport,
     Issue,
 )
+from repoagent.retrieval.configured import graph_policy_from_settings
 from repoagent.sdk.retrieval import RetrievalApi
 
 
@@ -48,7 +49,8 @@ class InvestigationApi:
             context_chars=settings.investigation_context_chars,
         )
         llm = provider or llm_provider_from_settings(settings)
-        report = InvestigationService(store, embedding, llm).investigate(
+        policy = graph_policy_from_settings(settings)
+        report = InvestigationService(store, embedding, llm, policy).investigate(
             request, limits
         )
         InvestigationStore(settings.data_dir / "investigations").save(report)

@@ -26,7 +26,10 @@ def _experiment(item: ExperimentSummary) -> list[str]:
     if item.mode == "repair":
         rows += [
             f"  Validated repairs:        {item.validated_repairs}",
-            f"  Hidden tests resolved:    {item.hidden_tests_resolved}",
+            f"  Hidden tests resolved:    {item.hidden_tests_resolved}"
+            f" ({_pct(item.hidden_test_success_rate)})",
+            f"  First-attempt successes:  {item.first_attempt_successes}",
+            f"  Regressions:              {item.regressions}",
             f"  Average repair attempts:  {_num(item.avg_attempts)}",
             f"  Lines added/removed:      {item.lines_added}/{item.lines_removed}",
         ]
@@ -49,6 +52,7 @@ def _experiment(item: ExperimentSummary) -> list[str]:
         ]
     rows.append(f"  Average runtime (s):      {_num(item.avg_duration_seconds)}")
     rows += [f"  Failure {name}: {count}" for name, count in item.failures.items()]
+    rows += [f"  Stage {name}: {count}" for name, count in item.failure_stages.items()]
     return rows
 
 

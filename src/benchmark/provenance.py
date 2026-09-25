@@ -10,6 +10,7 @@ from uuid import uuid4
 from pydantic import Field
 
 from repoagent.analysis.models import AnalysisModel
+from repoagent.benchmark.environment import image_digest
 from repoagent.benchmark.experiment import ExperimentConfig
 from repoagent.benchmark.models import BenchmarkSuite
 from repoagent.config import Settings
@@ -31,10 +32,19 @@ class RunManifest(AnalysisModel):
     llm_model: str
     embedding: str
     sandbox_image: str
+    # Immutable identity of the default image and each task's pinned image.
+    sandbox_image_digest: str | None = None
+    task_images: dict[str, str] = Field(default_factory=dict)
     python: str
     platform: str
     started_at: datetime
     finished_at: datetime | None = None
+
+
+def _embedding(settings: Settings) -> str:
+    if settings.embedding_provider == "hashing":
+        return f"hashing:{settings.embedding_dimension}"
+    return f"{settings.embedding_provider}:{settings.embedding_model}"
 
 
 def new_run_id(now: datetime | None = None) -> str:
@@ -82,8 +92,16 @@ def build_manifest(
         llm_model=settings.llm_model
         if (provider_name or settings.llm_provider) != "none"
         else "",
-        embedding=f"{settings.embedding_provider}:{settings.embedding_dimension}",
+        embedding=_embedding(settings),
         sandbox_image=settings.sandbox_image,
+        sandbox_image_digest=image_digest(settings.sandbox_image)
+        if any(config.mode == "repair" for config in experiments)
+        else None,
+        task_images={
+            task.task_id: task.environment.image
+            for task in suite.select(task_ids)
+            if task.environment and task.environment.image
+        },
         python=platform.python_version(),
         platform=platform.platform(),
         started_at=datetime.now(UTC),

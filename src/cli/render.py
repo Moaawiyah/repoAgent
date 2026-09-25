@@ -111,11 +111,12 @@ def render_evaluation(report: EvaluationReport) -> str:
         f"K: {report.k}",
         "",
         f"{'Strategy':<10}{'Queries':>8}{'Recall@K':>10}{'MRR':>8}"
-        f"{'Hit@K':>8}{'Prec@K':>8}",
+        f"{'Hit@K':>8}{'Prec@K':>8}{'NDCG@K':>8}",
     ]
     for row in report.rows:
         lines.append(
             f"{row.strategy.value:<10}{row.queries:>8}{row.recall_at_k:>10.3f}"
             f"{row.mrr:>8.3f}{row.hit_rate_at_k:>8.3f}{row.precision_at_k:>8.3f}"
+            f"{row.ndcg_at_k:>8.3f}"
         )
     return "\n".join(lines)

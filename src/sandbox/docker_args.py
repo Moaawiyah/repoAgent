@@ -10,6 +10,7 @@ from repoagent.validation.policy import DEPS_MOUNT, WORKSPACE_MOUNT
 
 _IMAGE = re.compile(r"^[a-z0-9][a-z0-9._/:@-]{0,254}$")
 _NAME = re.compile(r"^repoagent-[a-f0-9]{8,32}$")
+_IMPORT_ROOT = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$")
 NOBODY = "65534:65534"
 TMPFS = "/tmp:rw,nosuid,nodev,size=256m"
 MAX_FILE_BYTES = 268_435_456
@@ -48,10 +49,21 @@ class DockerCommandBuilder:
     """No host directories besides the disposable copy and dependency dir."""
 
     def __init__(
-        self, image: str, limits: SandboxLimits, docker: str = "docker"
+        self,
+        image: str,
+        limits: SandboxLimits,
+        docker: str = "docker",
+        python_paths: list[str] | None = None,
     ) -> None:
         self._image, self._limits = validate_image(image), limits
         self._docker = docker
+        roots = python_paths or []
+        if any(not _IMPORT_ROOT.fullmatch(root) or ".." in root for root in roots):
+            raise SandboxError("Invalid sandbox import root")
+        # Workspace import roots (src layout) follow the dependency mount.
+        self._pythonpath = ":".join(
+            [DEPS_MOUNT, *(f"{WORKSPACE_MOUNT}/{root}" for root in roots)]
+        )
 
     def run(
         self,
@@ -77,7 +89,7 @@ class DockerCommandBuilder:
             args += ["--mount", _mount(workspace, WORKSPACE_MOUNT, readonly=False)]
             args += ["--workdir", WORKSPACE_MOUNT]
         args += ["--mount", _mount(deps, DEPS_MOUNT, readonly=workspace is not None)]
-        for key, value in CONTAINER_ENV.items():
+        for key, value in {**CONTAINER_ENV, "PYTHONPATH": self._pythonpath}.items():
             args += ["--env", f"{key}={value}"]
         return [*args, self._image, *argv]
 

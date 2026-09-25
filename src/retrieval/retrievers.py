@@ -1,6 +1,6 @@
 """Retriever abstraction, vector retrieval, and hybrid fusion."""
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from repoagent.retrieval.bm25 import BM25Retriever
 from repoagent.retrieval.embeddings import EmbeddingProvider
@@ -13,6 +13,10 @@ from repoagent.retrieval.models import (
     RetrievalStrategy,
 )
 from repoagent.retrieval.vector_store import LocalVectorStore, VectorStore
+
+if TYPE_CHECKING:
+    from repoagent.graph.expansion import GraphExpander
+    from repoagent.graph.policy import GraphPolicy
 
 
 class Retriever(Protocol):
@@ -89,13 +93,14 @@ def build_retriever(
     chunks: list[CodeChunk],
     provider: EmbeddingProvider,
     vectors: dict[str, list[float]],
-    expander: "object | None" = None,
+    expander: "GraphExpander | None" = None,
+    policy: "GraphPolicy | None" = None,
 ) -> Retriever:
     """Materialize the configured strategy from an indexed snapshot.
 
     Vectors come from the persisted snapshot; chunk embedding never runs
     at query time. ``expander`` (a GraphExpander) is required only for
-    the hybrid_graph strategy.
+    the hybrid_graph strategy; ``policy`` (a GraphPolicy) tunes it.
     """
     lexical = BM25Retriever(chunks)
     if strategy is RetrievalStrategy.BM25:
@@ -111,4 +116,4 @@ def build_retriever(
     from repoagent.retrieval.graph import build_graph_retriever
 
     hybrid = HybridRetriever(lexical, semantic)
-    return build_graph_retriever(strategy, hybrid, expander)
+    return build_graph_retriever(strategy, hybrid, expander, policy)

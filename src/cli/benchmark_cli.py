@@ -6,7 +6,12 @@ from typing import Annotated
 
 import typer
 
-from repoagent.benchmark.experiment import ABLATIONS, BenchmarkMode
+from repoagent.benchmark.experiment import (
+    ABLATIONS,
+    RETRIEVAL_ABLATIONS,
+    BenchmarkMode,
+    ablation_names,
+)
 from repoagent.benchmark.loaders import BenchmarkError, resolve_suite
 from repoagent.benchmark.report import render_benchmark
 from repoagent.cli.runtime import client, errors
@@ -30,7 +35,11 @@ def register_benchmark(app: typer.Typer) -> None:
         task: Annotated[list[str] | None, typer.Option("--task")] = None,
         ablation: Annotated[
             list[str] | None,
-            typer.Option("--ablation", help=f"One of: {', '.join(ABLATIONS)}"),
+            typer.Option(
+                "--ablation",
+                help=f"LLM modes: {', '.join(ABLATIONS)}. "
+                f"Retrieval: {', '.join(RETRIEVAL_ABLATIONS)}",
+            ),
         ] = None,
         k: Annotated[int, typer.Option("--k", min=1, max=50)] = 5,
         max_attempts: Annotated[int, typer.Option(min=1, max=10)] = 3,
@@ -40,7 +49,8 @@ def register_benchmark(app: typer.Typer) -> None:
         """Run a benchmark; retrieval mode is LLM-free, repair mode uses Docker."""
         try:
             resolve_suite(suite)
-            unknown = [name for name in ablation or [] if name not in ABLATIONS]
+            known = ablation_names(mode)
+            unknown = [name for name in ablation or [] if name not in known]
             if unknown:
                 raise BenchmarkError(f"Unknown ablation(s): {', '.join(unknown)}")
         except BenchmarkError as error:
@@ -70,12 +80,18 @@ def register_benchmark(app: typer.Typer) -> None:
 
     @app.command("benchmark-import")
     def benchmark_import(
-        dataset: Annotated[str, typer.Argument(help="bugsinpy or swebench")],
+        ctx: typer.Context,
+        dataset: Annotated[
+            str, typer.Argument(help="bugsinpy, swebench, or swerebench")
+        ],
         source: Path,
         output: Annotated[Path, typer.Option("--output")],
         item: Annotated[list[str], typer.Option("--item", help="Bug or instance")],
         name: str = "swe-bench-verified",
         origin: str = "princeton-nlp/SWE-bench_Verified",
+        image: Annotated[
+            str, typer.Option(help="swerebench image template (pinned by digest).")
+        ] = "python:{python}-slim",
     ) -> None:
         """Convert a local dataset checkout/export into a RepoAgent suite."""
         from repoagent.benchmark.adapters import import_bugsinpy, import_swebench
@@ -84,10 +100,48 @@ def register_benchmark(app: typer.Typer) -> None:
         with errors():
             if dataset == "bugsinpy":
                 suite = import_bugsinpy(source, item)
+            elif dataset == "swerebench":
+                api = client(ctx).benchmarks()
+                records = read_records(source)
+                suite, skipped = api.import_swerebench(records, item, image)
+                for instance, reason in skipped.items():
+                    typer.echo(f"Skipped {instance}: {reason}", err=True)
             elif dataset == "swebench":
                 suite = import_swebench(read_records(source), item, name, origin)
             else:
-                raise BenchmarkError("Dataset must be bugsinpy or swebench")
+                raise BenchmarkError("Dataset must be bugsinpy, swebench or swerebench")
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(jsonlib.dumps(suite.model_dump(mode="json"), indent=2))
             typer.echo(f"Wrote {len(suite.tasks)} task(s) to {output}")
+
+    @app.command("benchmark-verify")
+    def benchmark_verify(
+        ctx: typer.Context,
+        suite: Annotated[str, typer.Argument(help="Suite file or ./benchmarks name.")],
+        task: Annotated[list[str] | None, typer.Option("--task")] = None,
+        output: Annotated[
+            Path | None, typer.Option(help="Verified-only suite.")
+        ] = None,
+        json: Json = False,
+    ) -> None:
+        """Check pinned environments, hidden tests, and gold patches (Docker)."""
+        from repoagent.benchmark.loaders import load_suite
+
+        with errors():
+            checks = client(ctx).benchmarks().verify(suite, task_ids=task)
+            for check in checks:
+                line = check.model_dump_json() if json else _check_line(check)
+                typer.echo(line)
+            if output is not None:
+                loaded = load_suite(resolve_suite(suite))
+                keep = {c.task_id for c in checks if c.verified}
+                tasks = [t for t in loaded.tasks if t.task_id in keep]
+                verified = loaded.model_copy(update={"tasks": tasks})
+                output.write_text(verified.model_dump_json(indent=2) + "\n")
+                typer.echo(f"Wrote {len(tasks)} verified task(s) to {output}")
+
+
+def _check_line(check) -> str:
+    status = "VERIFIED" if check.verified else "EXCLUDED"
+    reason = f" - {check.reason}" if check.reason else ""
+    return f"{check.task_id}: {status} ({check.duration_seconds}s){reason}"

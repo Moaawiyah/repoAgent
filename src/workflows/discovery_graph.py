@@ -20,6 +20,7 @@ from repoagent.workflows.discovery_nodes import (
     DiscoveryNodes,
     DiscoveryState,
 )
+from repoagent.workflows.guards import required
 from repoagent.workflows.progress import StageSink, ignore_stage
 
 STAGES = {
@@ -116,7 +117,7 @@ class DiscoveryGraph:
 
     @staticmethod
     def report(state: DiscoveryState, repository: str) -> AuditReport:
-        analysis = state.context.analysis
+        analysis = required(state.context, "context").analysis
         return AuditReport(
             repository=repository,
             files_scanned=analysis.python_files,

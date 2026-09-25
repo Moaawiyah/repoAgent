@@ -63,14 +63,14 @@ def triage(
         )
     tests_green = tests is None or tests.exit_code == 0
     if tests_green and comparison and comparison.new_lint:
-        first = comparison.new_lint[0].split("|")
+        lint_first = comparison.new_lint[0].split("|")
         return FailureAnalysis(
             category=FailureCategory.LINT,
             likely_reason=(
                 f"Patch introduced {len(comparison.new_lint)} Ruff violation(s): "
                 + "; ".join(item.replace("|", " ") for item in comparison.new_lint[:3])
             )[:800],
-            affected_file=first[0][:300],
+            affected_file=lint_first[0][:300],
             patch_caused_failure=True,
             next_action=NextAction.REVISE_PATCH,
         )

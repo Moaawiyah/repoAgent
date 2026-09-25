@@ -1,0 +1,109 @@
+{
+  "run_id": "20260925T043332Z-22e59f",
+  "suite": "real-repair",
+  "suite_source": "nebius/SWE-rebench (filtered split)",
+  "suite_sha256": "0eb180cabf540e9ed9c70ef977db636baa2b77be7e61e76f4ad8280b1b899ee6",
+  "task_ids": [
+    "andialbrecht__sqlparse-676",
+    "kjd__idna-83",
+    "astanin__python-tabulate-139",
+    "mahmoud__boltons-341",
+    "lark-parser__lark-1481",
+    "asottile__add-trailing-comma-154",
+    "cleder__fastkml-226",
+    "Knio__pynmea2-124",
+    "benmoran56__esper-81",
+    "macbre__sql-metadata-113",
+    "fabfuel__circuitbreaker-67",
+    "joke2k__django-environ-358",
+    "barrust__pyspellchecker-101",
+    "django__asgiref-196",
+    "mathandy__svgpathtools-170",
+    "fox-it__dissect.cstruct-66",
+    "kinegratii__borax-21",
+    "CrossGL__crosstl-98",
+    "christiansandberg__canopen-506",
+    "geospace-code__pymap3d-66"
+  ],
+  "experiments": [
+    {
+      "name": "full",
+      "mode": "retrieval",
+      "features": {
+        "graph_retrieval": true,
+        "reviewer": true,
+        "single_retrieval_pass": false,
+        "failure_retry": true,
+        "require_confident_root_cause": true
+      },
+      "k": 5,
+      "strategies": [
+        "bm25",
+        "vector",
+        "hybrid",
+        "hybrid_graph"
+      ],
+      "graph_policy": null,
+      "reranker": null,
+      "rerank_candidates": null,
+      "max_attempts": 3,
+      "timeout_seconds": 300
+    },
+    {
+      "name": "rerank_llm",
+      "mode": "retrieval",
+      "features": {
+        "graph_retrieval": true,
+        "reviewer": true,
+        "single_retrieval_pass": false,
+        "failure_retry": true,
+        "require_confident_root_cause": true
+      },
+      "k": 5,
+      "strategies": [
+        "bm25",
+        "hybrid",
+        "hybrid_graph"
+      ],
+      "graph_policy": null,
+      "reranker": "llm",
+      "rerank_candidates": 20,
+      "max_attempts": 3,
+      "timeout_seconds": 300
+    }
+  ],
+  "repoagent_version": "0.1.0",
+  "repoagent_commit": "acaf5d501e3cb2332bca7261f033ca4b38ceef37",
+  "repoagent_dirty": true,
+  "llm_provider": "openai",
+  "llm_model": "qwen3-16k",
+  "embedding": "openai:qwen3-embedding:0.6b",
+  "sandbox_image": "python:3.12-slim",
+  "sandbox_image_digest": null,
+  "task_images": {
+    "andialbrecht__sqlparse-676": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "kjd__idna-83": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "astanin__python-tabulate-139": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "mahmoud__boltons-341": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "lark-parser__lark-1481": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "asottile__add-trailing-comma-154": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "cleder__fastkml-226": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "Knio__pynmea2-124": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "benmoran56__esper-81": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "macbre__sql-metadata-113": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "fabfuel__circuitbreaker-67": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "joke2k__django-environ-358": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "barrust__pyspellchecker-101": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "django__asgiref-196": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "mathandy__svgpathtools-170": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "fox-it__dissect.cstruct-66": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "kinegratii__borax-21": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "CrossGL__crosstl-98": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "christiansandberg__canopen-506": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b",
+    "geospace-code__pymap3d-66": "python@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b"
+  },
+  "python": "3.13.0",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "started_at": "2026-09-25T04:33:32.575307Z",
+  "finished_at": null
+}

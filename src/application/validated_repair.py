@@ -27,6 +27,7 @@ from repoagent.domain.investigation import (
 )
 from repoagent.domain.repair_execution import ValidatedRepairReport
 from repoagent.domain.sandbox import CommandKind, SandboxLimits
+from repoagent.graph.policy import GraphPolicy
 from repoagent.ports.index_store import IndexStore
 from repoagent.ports.sandbox import SandboxRunner
 from repoagent.retrieval.embeddings import EmbeddingProvider
@@ -57,9 +58,11 @@ class ValidatedRepairService:
         provider: LLMProvider | None,
         runner: SandboxRunner,
         investigation_limits: InvestigationLimits | None = None,
+        graph_policy: GraphPolicy | None = None,
     ) -> None:
         self._store, self._embedding, self._provider = store, embedding, provider
         self._runner, self._limits = runner, investigation_limits
+        self._policy = graph_policy
 
     def repair(self, request: ValidatedRepairRequest) -> ValidatedRepairReport:
         provider = CountingProvider(require_provider(self._provider, "repairs"))
@@ -80,7 +83,9 @@ class ValidatedRepairService:
             )
 
         def investigate(issue: Issue) -> InvestigationReport:
-            service = InvestigationService(self._store, self._embedding, provider)
+            service = InvestigationService(
+                self._store, self._embedding, provider, self._policy
+            )
             return service.investigate(
                 InvestigateRequest(
                     repository=request.repository,
@@ -95,8 +100,7 @@ class ValidatedRepairService:
         try:
             with self._runner.session(root, plan, request.sandbox) as session:
                 investigation = investigate(request.issue)
-                reason = investigation.termination_reason
-                if reason != TerminationReason.CONFIDENT_ROOT_CAUSE:
+                if not _can_repair(investigation, features):
                     return early_report(
                         task_id, request.repository, plan, provider, investigation
                     )
@@ -112,3 +116,17 @@ class ValidatedRepairService:
             return early_report(
                 task_id, request.repository, plan, provider, investigation, str(error)
             )
+
+
+_UNREPAIRABLE = {TerminationReason.PROVIDER_ERROR, TerminationReason.INVALID_ISSUE}
+
+
+def _can_repair(report: InvestigationReport, features: RepairFeatures) -> bool:
+    """Confident root cause, or (opt-in) the best-ranked hypothesis."""
+    if report.termination_reason == TerminationReason.CONFIDENT_ROOT_CAUSE:
+        return True
+    return (
+        not features.require_confident_root_cause
+        and report.termination_reason not in _UNREPAIRABLE
+        and report.primary_hypothesis is not None
+    )

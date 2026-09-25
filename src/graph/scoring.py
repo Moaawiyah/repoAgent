@@ -19,15 +19,23 @@ class ScoringConfig:
 
     Closer nodes and stronger relationships rank higher; the seed rank
     keeps the initial retrieval evidence in the score so a strong lexical
-    seed outweighs a distant graph-only path.
+    seed outweighs a distant graph-only path. Each statically uncertain
+    hop (``resolved=False``) multiplies the score by ``unresolved_weight``.
     """
 
     decay: float = 0.6
     weights: dict[EdgeType, float] = field(
         default_factory=lambda: dict(DEFAULT_EDGE_WEIGHTS)
     )
+    unresolved_weight: float = 1.0
 
-    def score(self, seed_rank: int, distance: int, edge_types: list[EdgeType]) -> float:
+    def score(
+        self,
+        seed_rank: int,
+        distance: int,
+        edge_types: list[EdgeType],
+        unresolved_hops: int = 0,
+    ) -> float:
         """Combine seed rank, distance decay, and relationship weights."""
         if seed_rank < 1 or distance < 1:
             return 0.0
@@ -37,4 +45,5 @@ class ScoringConfig:
             (self.weights.get(edge_type, 0.5) for edge_type in edge_types),
             default=0.5,
         )
-        return seed_weight * decayed * weight
+        uncertainty = self.unresolved_weight**unresolved_hops
+        return seed_weight * decayed * weight * uncertainty

@@ -6,14 +6,16 @@ from typing import TYPE_CHECKING
 from repoagent.agent.metrics_support import diff_stats
 from repoagent.ai.provider import LLMProvider
 from repoagent.benchmark.classification import classify_investigation, classify_repair
+from repoagent.benchmark.environment import task_runner, task_settings
 from repoagent.benchmark.experiment import BenchmarkMode, ExperimentConfig
 from repoagent.benchmark.hidden_tests import HiddenTestEvaluator
 from repoagent.benchmark.models import BenchmarkTask
-from repoagent.benchmark.results import RetrievalScore, TokenUsage
+from repoagent.benchmark.results import TokenUsage
+from repoagent.benchmark.retrieval_arm import retrieval_fields
 from repoagent.benchmark.scoring import localization, patch_metrics
 from repoagent.config import Settings
-from repoagent.evaluation.models import RetrievalCase
 from repoagent.ports.sandbox import SandboxRunner
+from repoagent.sdk.validated_repair import ValidatedRepairApi
 
 if TYPE_CHECKING:
     from repoagent.sdk import RepoAgent
@@ -34,21 +36,11 @@ class TaskExecutor:
 
     def retrieval(
         self, task: BenchmarkTask, path: Path, config: ExperimentConfig
-    ) -> dict[str, RetrievalScore]:
-        case = RetrievalCase(
-            query=task.issue,
-            expected_files=task.expected_files,
-            expected_symbols=task.expected_symbols,
+    ) -> dict:
+        """TaskResult fields: per-strategy scores, plus LLM rerank usage."""
+        return retrieval_fields(
+            self._client, self._settings, self._provider, task, path, config
         )
-        report = self._client.evaluate(
-            path, [case], k=config.k, strategies=config.strategies
-        )
-        return {
-            row.strategy.value: RetrievalScore(
-                recall_at_k=row.recall_at_k, mrr=row.mrr, hit_at_k=row.hit_rate_at_k
-            )
-            for row in report.rows
-        }
 
     def execute(
         self, task: BenchmarkTask, path: Path, config: ExperimentConfig
@@ -85,7 +77,9 @@ class TaskExecutor:
     def _repair(
         self, task: BenchmarkTask, path: Path, config: ExperimentConfig
     ) -> dict:
-        report = self._client.repair_and_validate(
+        settings = task_settings(self._settings, task)
+        runner = task_runner(settings, self._sandbox)
+        report = ValidatedRepairApi(settings, self._client.retrieval(), runner).repair(
             path,
             task.issue,
             max_attempts=config.max_attempts,
@@ -93,7 +87,7 @@ class TaskExecutor:
             provider=self._provider,
             features=config.features,
         )
-        hidden = HiddenTestEvaluator(self._settings, self._sandbox).evaluate(
+        hidden = HiddenTestEvaluator(settings, runner).evaluate(
             task, path, report, config.timeout_seconds
         )
         located = localization(task, report.investigation)

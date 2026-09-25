@@ -20,7 +20,7 @@ from repoagent.domain.audit import (
 
 
 def _with_safe_ids(tree: ast.AST) -> set[int]:
-    safe = set()
+    safe: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.With | ast.AsyncWith):
             safe.update(id(item.context_expr) for item in node.items)

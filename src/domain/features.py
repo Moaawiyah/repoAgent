@@ -14,6 +14,10 @@ class RepairFeatures(AnalysisModel):
     reviewer: bool = True
     single_retrieval_pass: bool = False
     failure_retry: bool = True
+    # False: when the investigation stops on a budget or on insufficient
+    # evidence but still ranks a primary hypothesis, hand that hypothesis to
+    # the Developer and let sandbox validation (and hidden tests) judge it.
+    require_confident_root_cause: bool = True
 
     @property
     def name(self) -> str:
@@ -24,6 +28,7 @@ class RepairFeatures(AnalysisModel):
                 ("no_reviewer", self.reviewer),
                 ("single_pass", not self.single_retrieval_pass),
                 ("no_retry", self.failure_retry),
+                ("best_hypothesis", self.require_confident_root_cause),
             )
             if not enabled
         ]

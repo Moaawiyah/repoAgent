@@ -47,12 +47,12 @@ def prepare():
     graph = RepositoryGraphBuilder(chunks).build(analysis).to_snapshot()
     store = store_from_snapshot(graph)
     by_qualified = {chunk.qualified_name: chunk for chunk in chunks}
-    return store, by_qualified
+    return store, chunks, by_qualified
 
 
 def test_expansion_follows_call_chain_with_provenance():
-    store, by_qualified = prepare()
-    expander = GraphExpander(store, by_qualified, TraversalConfig(max_depth=3))
+    store, chunks, by_qualified = prepare()
+    expander = GraphExpander(store, chunks, TraversalConfig(max_depth=3))
     seed = RetrievalResult(
         rank=1,
         score=1.0,
@@ -70,8 +70,8 @@ def test_expansion_follows_call_chain_with_provenance():
 
 
 def test_hybrid_graph_fuses_seeds_and_expansion():
-    store, by_qualified = prepare()
-    expander = GraphExpander(store, by_qualified)
+    store, chunks, by_qualified = prepare()
+    expander = GraphExpander(store, chunks)
     retriever = HybridGraphRetriever(
         FakeHybrid(by_qualified, ["auth.controller.AuthController.login"]), expander
     )

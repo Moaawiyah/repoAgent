@@ -7,7 +7,12 @@ from repoagent.retrieval.tokenize import tokenize
 
 
 class Reranker(Protocol):
-    """Reorders a candidate set; implementations must be deterministic."""
+    """Reorders a candidate set and returns at most ``top_k`` of it.
+
+    Implementations never add candidates and keep provenance intact. The
+    keyword reranker is deterministic and used in tests; model-backed ones
+    live in :mod:`repoagent.retrieval.model_rerank`.
+    """
 
     def rerank(
         self, query: str, candidates: list[RetrievalResult], top_k: int
