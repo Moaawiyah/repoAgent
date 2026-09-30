@@ -17,6 +17,7 @@ from pathlib import Path
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel
 
+from repoagent.agent.graph_runtime import invoke_bounded
 from repoagent.domain.errors import RepoAgentError
 from repoagent.domain.github import RepositoryHandle
 from repoagent.domain.investigation import Issue
@@ -29,8 +30,8 @@ from repoagent.workflows.outcomes import CURRENT, repair_outcomes
 from repoagent.workflows.progress import (
     REPAIR_NODE_STAGES,
     StageSink,
-    WorkflowProgressHandler,
     ignore_stage,
+    node_stage_reporter,
 )
 
 AnyRepairReport = ValidatedRepairReport | RepairReport
@@ -40,6 +41,8 @@ NODES = {
     "analyze_repository": "analysis",
     "finalize": "report",
 }
+# Linear four-node graph; the margin only absorbs framework bookkeeping.
+STEP_LIMIT = 10
 
 
 @dataclass(frozen=True)
@@ -98,6 +101,11 @@ class RepairGraph:
         self._record("report", StageStatus.DONE, report.status.value)
         return {}
 
+    @property
+    def graph(self):
+        """The compiled LangGraph (for inspection and diagrams)."""
+        return self._graph
+
     def _build(self):
         graph = StateGraph(RepairWorkflowState)
         graph.add_node("load_repository", self._load)
@@ -112,7 +120,12 @@ class RepairGraph:
         return graph.compile()
 
     def run(self, source: str, issue: Issue, execute: bool) -> RepairWorkflowState:
-        handler = WorkflowProgressHandler(NODES, self._record)
         state = RepairWorkflowState(source=source, issue=issue, execute=execute)
-        final = self._graph.invoke(state, config={"callbacks": [handler]})
+        final = invoke_bounded(
+            self._graph,
+            state,
+            name="repair_workflow",
+            recursion_limit=STEP_LIMIT,
+            on_node_start=node_stage_reporter(NODES, self._record),
+        )
         return RepairWorkflowState.model_validate(final)

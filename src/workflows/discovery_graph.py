@@ -13,6 +13,7 @@ from collections.abc import Callable
 
 from langgraph.graph import END, START, StateGraph
 
+from repoagent.agent.graph_runtime import invoke_bounded
 from repoagent.domain.audit_report import AuditMetrics, AuditReport
 from repoagent.domain.workflow import StageStatus
 from repoagent.workflows.discovery_nodes import (
@@ -33,6 +34,8 @@ STAGES = {
     "verify": "verifier",
     "results": "report",
 }
+# At most eight nodes run (no loops); the margin absorbs framework bookkeeping.
+STEP_LIMIT = 12
 
 
 def _describe(node: str, state: DiscoveryState, update: dict) -> str:
@@ -82,6 +85,11 @@ class DiscoveryGraph:
         )
         return {"metrics": empty}
 
+    @property
+    def graph(self):
+        """The compiled LangGraph (for inspection and diagrams)."""
+        return self._graph
+
     def _build(self):
         nodes = self._nodes
         actions = {
@@ -112,7 +120,12 @@ class DiscoveryGraph:
         return graph.compile()
 
     def run(self, source: str, limit: int | None = None) -> DiscoveryState:
-        final = self._graph.invoke(DiscoveryState(source=source, limit=limit))
+        final = invoke_bounded(
+            self._graph,
+            DiscoveryState(source=source, limit=limit),
+            name="discovery_workflow",
+            recursion_limit=STEP_LIMIT,
+        )
         return DiscoveryState.model_validate(final)
 
     @staticmethod

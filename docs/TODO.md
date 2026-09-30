@@ -47,10 +47,9 @@ for routine planning.
 ## Lower priority / exploratory
 
 - [ ] **Semantic embeddings.** Default `HashingEmbeddingProvider` is lexical
-      (hashed tokens + trigrams), not semantic. A real embedding model adapter
-      exists via the LangChain `Embeddings` bridge
-      (`retrieval/langchain_adapters.py`) but is not the default; needs a
-      recall/MRR comparison before switching defaults.
+      (hashed tokens + trigrams), not semantic. A semantic adapter exists
+      (`REPOAGENT_EMBEDDING_PROVIDER=openai`, `ai/embeddings.py`) but is not
+      the default; needs a recall/MRR comparison before switching defaults.
 - [ ] **Type-aware call resolution.** `CALLS` edges in the knowledge graph are
       name-based (`graph/resolver.py`); attribute calls on same-named methods
       across types stay ambiguous. Would need lightweight type inference.
@@ -91,13 +90,6 @@ fixed unreviewed, since several are legitimate scope/severity tradeoffs.
       already-reported timeout. No LLM involved — this is exactly the
       deterministic limit the original spec asked for, not the forbidden LLM
       watchdog agent. Covered by `tests/unit/test_job_queue_watchdog.py`.
-- [x] **`LangChainChatProvider` now shares the rate-limit gatekeeper.**
-      Wired through the same `SlidingWindowLimiter` (`ai/throttle.py`) that
-      `GroqProvider`/`OpenAIChatProvider` use, via optional
-      `tokens_per_minute`/`requests_per_minute`/`limiter=` constructor
-      arguments (off by default, preserving prior behavior). Covered by
-      `tests/unit/test_langchain_rate_limit.py`.
-
 - [x] **GitHub install race (TOCTOU).** `GitHubRepositorySource._install()`
       unconditionally `rmtree()`d the target and renamed staging into it, with
       the `.ready` marker checked before, not during, install — concurrent

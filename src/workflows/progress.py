@@ -1,16 +1,12 @@
-"""LangChain callback bridge from LangGraph node execution to workflow stages.
+"""Map LangGraph node starts onto user-facing workflow stages.
 
-LangGraph propagates run callbacks into graphs invoked inside a node, so
-one handler observes the existing Investigator, Developer/Reviewer and
-sandbox repair subgraphs without modifying them. Only the node run itself
-(``name == langgraph_node``) is reported, never inner runnables.
+Node starts come from LangGraph's ``tasks`` stream (see
+``agent.graph_runtime``), which includes graphs invoked inside a node, so
+the existing Investigator, Developer/Reviewer and sandbox repair subgraphs
+are observed without modifying them.
 """
 
 from collections.abc import Callable, Mapping
-from typing import Any
-from uuid import UUID
-
-from langchain_core.callbacks import BaseCallbackHandler
 
 from repoagent.domain.workflow import StageStatus
 
@@ -40,26 +36,14 @@ REPAIR_NODE_STAGES: Mapping[str, str] = {
 }
 
 
-class WorkflowProgressHandler(BaseCallbackHandler):
-    """Reports each mapped LangGraph node start as a running stage."""
+def node_stage_reporter(
+    nodes: Mapping[str, str], sink: StageSink
+) -> Callable[[str], None]:
+    """Report each mapped node start as a running stage; others are ignored."""
 
-    def __init__(self, nodes: Mapping[str, str], sink: StageSink) -> None:
-        self._nodes, self._sink = nodes, sink
-
-    def on_chain_start(
-        self,
-        serialized: dict[str, Any] | None,
-        inputs: dict[str, Any] | Any,
-        *,
-        run_id: UUID,
-        parent_run_id: UUID | None = None,
-        tags: list[str] | None = None,
-        metadata: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> None:
-        node = (metadata or {}).get("langgraph_node")
-        if node is None or kwargs.get("name") != node:
-            return
-        key = self._nodes.get(node)
+    def report(node: str) -> None:
+        key = nodes.get(node)
         if key is not None:
-            self._sink(key, StageStatus.RUNNING, "")
+            sink(key, StageStatus.RUNNING, "")
+
+    return report

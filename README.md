@@ -221,7 +221,8 @@ and `export-obsidian` remain available unchanged for inspection-only use.
 - **RepairGraph** (`workflows/repair_graph.py`): load_repository →
   analyze_repository → repair → finalize. `repair` runs the existing
   Investigator, Developer/Reviewer, and sandbox subgraphs unchanged; a
-  LangChain callback handler turns their node executions into live stages.
+  LangGraph `tasks` stream (with `subgraphs=True`) turns their node starts
+  into live stages.
 - **DiscoveryGraph** (`workflows/discovery_graph.py`): load → analyze →
   static detectors → graph detectors → deduplicate → (no candidates →
   results) → RAG evidence → Issue Verifier → results. It never repairs; a
@@ -236,16 +237,16 @@ and `export-obsidian` remain available unchanged for inspection-only use.
   at LLM call boundaries — guarded so a late natural completion can never
   overwrite an already-reported timeout. There is no LLM watchdog agent.
 - **Rate-limit gatekeeper** (`ai/throttle.py`): a shared, per-key sliding
-  token/request budget. `GroqProvider`, `OpenAIChatProvider`, and
-  `LangChainChatProvider` all go through the same one — no adapter bypasses
+  token/request budget. `GroqProvider` and `OpenAIChatProvider`
+  both go through the same one — no adapter bypasses
   it.
+- **Bounded invocation** (`agent/graph_runtime.py`): every graph runs through
+  `invoke_bounded` with an explicit step limit and a named root run (visible
+  to callbacks and LangSmith traces). A limit breach raises the typed
+  `WorkflowLimitError` instead of surfacing as an internal error.
+- **Diagrams**: `repoagent workflow-diagram [NAME] [--json]` prints Mermaid
+  drawn from the compiled graphs themselves, so they never drift from code.
 
-LangChain (`langchain-core`) is used only at the edges:
-`LangChainChatProvider` adapts any LangChain chat model to the `LLMProvider`
-protocol (validated by RepoAgent's own structured-output check),
-`RepoAgentRetriever`/`search_code_tool` expose the existing BM25 + vector +
-graph fusion as a LangChain retriever/tool, and the embedding adapters bridge
-`EmbeddingProvider` and LangChain `Embeddings` in both directions.
 
 ## Docker sandbox
 

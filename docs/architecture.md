@@ -452,7 +452,7 @@ flowchart TD
   SDK --> Source[GitHubRepositorySource: hardened shallow fetch]
   SDK --> RG[RepairGraph] --> Sub[Investigator · Developer/Reviewer · M7 sandbox subgraphs]
   SDK --> DG[DiscoveryGraph] --> Audit[detectors · dedupe · RAG evidence · verifier]
-  RG & DG -.LangChain callbacks / stage sink.-> Queue
+  RG & DG -.LangGraph tasks stream / stage sink.-> Queue
   Routes -->|GET /tasks/id/graph| View[graph.view.build_view over RepositoryGraph]
 ```
 
@@ -460,8 +460,9 @@ flowchart TD
   adds repository loading, a `BudgetedProvider`, and progress — not another
   repair, retrieval or sandbox pipeline. `AuditService` now runs discovery
   through `DiscoveryGraph`, so CLI, SDK and web share one implementation.
-- Stage progress: `WorkflowProgressHandler` is a LangChain callback handler;
-  LangGraph propagates callbacks into graphs invoked inside nodes, so the
+- Stage progress: `invoke_bounded` (`agent/graph_runtime.py`) streams
+  LangGraph `tasks` events with `subgraphs=True`, which include graphs
+  invoked inside nodes, so the
   unchanged Investigator/RepairAgent/ExecutionRepairAgent node starts map to
   stages. `workflows/outcomes.py` marks the failing stage from the final
   report status and never upgrades a failure.

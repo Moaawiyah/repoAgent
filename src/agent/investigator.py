@@ -11,6 +11,7 @@ from langgraph.graph import END, START, StateGraph
 from repoagent.agent.discovery import DiscoveryNodes
 from repoagent.agent.evaluation import EvaluationNode
 from repoagent.agent.evidence import EvidenceNodes
+from repoagent.agent.graph_runtime import invoke_bounded
 from repoagent.agent.reasoning import ReasoningNodes
 from repoagent.agent.reporting import build_report
 from repoagent.agent.routing import (
@@ -43,6 +44,11 @@ class InvestigatorAgent:
         self._provider = provider
         self._limits = limits or InvestigationLimits()
         self._graph = self._build()
+
+    @property
+    def graph(self):
+        """The compiled LangGraph (for inspection and diagrams)."""
+        return self._graph
 
     def _build(self):
         discovery = DiscoveryNodes(self._provider)
@@ -101,8 +107,10 @@ class InvestigatorAgent:
             limits=self._limits,
             top_k=self._toolkit.top_k,
         )
-        final = self._graph.invoke(
+        final = invoke_bounded(
+            self._graph,
             state,
-            config={"recursion_limit": 20 + self._limits.max_iterations * 6},
+            name="investigator",
+            recursion_limit=20 + self._limits.max_iterations * 6,
         )
         return InvestigationReport.model_validate(final["report"])

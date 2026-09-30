@@ -4,6 +4,7 @@ from langgraph.graph import END, START, StateGraph
 
 from repoagent.adapters.patch_validator import StaticPatchValidator
 from repoagent.agent.developer import DeveloperAgent
+from repoagent.agent.graph_runtime import invoke_bounded
 from repoagent.agent.repair_reporting import build_repair_report
 from repoagent.agent.repair_state import RepairState
 from repoagent.agent.reviewer import ReviewerAgent
@@ -86,6 +87,11 @@ class RepairAgent:
     def _revision(state: RepairState) -> dict:
         return {"revisions": state.revisions + 1}
 
+    @property
+    def graph(self):
+        """The compiled LangGraph (for inspection and diagrams)."""
+        return self._graph
+
     def _build(self):
         graph = StateGraph(RepairState)
         graph.add_node("develop", self._develop)
@@ -121,7 +127,10 @@ class RepairAgent:
             max_revisions=self._max_revisions,
             runtime=runtime,
         )
-        result = self._graph.invoke(
-            state, config={"recursion_limit": 20 + 5 * self._max_revisions}
+        result = invoke_bounded(
+            self._graph,
+            state,
+            name="patch_review",
+            recursion_limit=20 + 5 * self._max_revisions,
         )
         return RepairReport.model_validate(result["report"])

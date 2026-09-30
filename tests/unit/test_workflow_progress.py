@@ -1,9 +1,10 @@
-"""Callback progress across nested LangGraphs, stage outcomes, graph view."""
+"""Streamed progress across nested LangGraphs, stage outcomes, graph view."""
 
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
+from repoagent.agent.graph_runtime import invoke_bounded
 from repoagent.domain.investigation import InvestigationReport
 from repoagent.domain.repair import RepairReport, RepairStatus
 from repoagent.domain.repair_execution import (
@@ -15,7 +16,7 @@ from repoagent.domain.workflow import StageStatus
 from repoagent.graph.models import GraphEdge, GraphNode, GraphSnapshot, NodeType
 from repoagent.graph.view import build_view
 from repoagent.workflows.outcomes import CURRENT, repair_outcomes
-from repoagent.workflows.progress import WorkflowProgressHandler, ignore_stage
+from repoagent.workflows.progress import ignore_stage, node_stage_reporter
 from tests.support.execution_provider import ISSUE
 
 
@@ -36,15 +37,18 @@ def chain(*names, inner=None):
     return graph.compile()
 
 
-def test_handler_reports_nested_subgraph_nodes_once():
+def test_reporter_sees_nested_subgraph_nodes_once():
     events = []
     inner = chain("develop", "review", "unmapped")
     outer = chain("load_repository", "repair", inner=inner)
-    handler = WorkflowProgressHandler(
+    reporter = node_stage_reporter(
         {"load_repository": "repository", "develop": "developer", "review": "reviewer"},
         lambda key, status, detail: events.append((key, status)),
     )
-    outer.invoke({"n": 1}, config={"callbacks": [handler]})
+    final = invoke_bounded(
+        outer, {"n": 1}, name="outer", recursion_limit=10, on_node_start=reporter
+    )
+    assert final == {"n": 1}
     assert events == [
         ("repository", StageStatus.RUNNING),
         ("developer", StageStatus.RUNNING),

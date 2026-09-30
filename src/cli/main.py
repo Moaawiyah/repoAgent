@@ -17,6 +17,7 @@ from repoagent.cli.repair_cli import register_repair
 from repoagent.cli.retrieval_cli import register_retrieval
 from repoagent.cli.runtime import client, errors, output
 from repoagent.cli.serve_cli import register_serve
+from repoagent.cli.workflow_cli import register_workflow
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -69,3 +70,4 @@ register_repair(app)
 register_audit(app)
 register_benchmark(app)
 register_serve(app)
+register_workflow(app)

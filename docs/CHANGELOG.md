@@ -5,6 +5,19 @@ detailed writeups in `docs/milestones.md` and `docs/architecture.md`; commands
 and behavior described here must match the current `README.md` — if they
 diverge, the code and README are correct, not this file.
 
+## Unreleased — LangChain removed; bounded LangGraph runs
+
+- Removed all direct LangChain use: `ai/langchain_chat.py`
+  (`LangChainChatProvider`), `retrieval/langchain_adapters.py`
+  (`RepoAgentRetriever`, `search_code_tool`, embedding bridges),
+  `RepoAgent.langchain_retriever()` and the `langchain-core` dependency
+  (still installed transitively by LangGraph). Workflow progress now comes
+  from LangGraph's own `tasks` stream instead of a LangChain callback.
+- All five LangGraph graphs run through `invoke_bounded`: explicit step
+  limits (now also on RepairGraph/DiscoveryGraph), named root runs, and a
+  typed `WorkflowLimitError` instead of an "Internal error" on a breach.
+- `repoagent workflow-diagram` prints Mermaid diagrams of the compiled graphs.
+
 ## Unreleased — Retrieval quality, audit → validated repair, real-bug suite
 
 - Graph nodes and code chunks share one stable identity (`symbol_node_ids`);

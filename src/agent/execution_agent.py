@@ -8,6 +8,7 @@ from langgraph.graph import END, START, StateGraph
 
 from repoagent.agent.execution_reporting import ExecutionReporter
 from repoagent.agent.execution_state import ExecutionRepairState, RepairLoopLimits
+from repoagent.agent.graph_runtime import invoke_bounded
 from repoagent.agent.revision_nodes import Reinvestigator, RevisionNodes
 from repoagent.agent.sandbox_nodes import SandboxNodes
 from repoagent.ai.counting import CountingProvider
@@ -46,6 +47,11 @@ class ExecutionRepairAgent:
         if self._revision.wants_reinvestigation(state):
             return "reinvestigate"
         return "propose"
+
+    @property
+    def graph(self):
+        """The compiled LangGraph (for inspection and diagrams)."""
+        return self._graph
 
     def _build(self):
         graph = StateGraph(ExecutionRepairState)
@@ -91,7 +97,10 @@ class ExecutionRepairAgent:
             limits=self._limits,
             retrieval_calls=investigation.tool_calls,
         )
-        result = self._graph.invoke(
-            state, config={"recursion_limit": self._limits.recursion_limit}
+        result = invoke_bounded(
+            self._graph,
+            state,
+            name="sandbox_repair",
+            recursion_limit=self._limits.recursion_limit,
         )
         return ValidatedRepairReport.model_validate(result["report"])

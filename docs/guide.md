@@ -348,7 +348,7 @@ instead of silently degrading.
 Token-dense chunks (numeric tables) that a local server rejects are retried
 alone and halved until they fit; each is logged as `embed_truncated`.
 Retrieval code depends only on the `EmbeddingProvider` protocol; the SDK also
-accepts any LangChain `Embeddings` through `LangChainEmbeddingProvider`.
+accepts any object implementing it via `RepoAgent(embedding_provider=...)`.
 
 **Graph expansion and reranking:**
 

@@ -71,3 +71,7 @@ class UnsafeCommandError(SandboxError):
 
 class WorkspaceError(SandboxError):
     """A disposable workspace could not be prepared or patched safely."""
+
+
+class WorkflowLimitError(RepoAgentError):
+    """A LangGraph workflow exhausted its step budget without terminating."""
